@@ -18,11 +18,7 @@ package org.xmlcml.pdf2svg;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Image;
 import java.awt.Paint;
-import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
@@ -31,30 +27,29 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.encoding.DictionaryEncoding;
-import org.apache.pdfbox.encoding.Encoding;
-import org.apache.pdfbox.pdfviewer.PageDrawer;
+import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
-import org.apache.pdfbox.pdmodel.common.PDMatrix;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.graphics.PDGraphicsState;
+//import org.apache.pdfbox.encoding.DictionaryEncoding;
+//import org.apache.pdfbox.encoding.Encoding;
+import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
+import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.apache.pdfbox.pdmodel.graphics.PDLineDashPattern;
-import org.apache.pdfbox.pdmodel.graphics.color.PDColorState;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
-import org.apache.pdfbox.pdmodel.text.PDTextState;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.state.PDGraphicsState;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.TextPosition;
+//import org.apache.pdfbox.util.TextPosition;
+//import org.apache.pdfbox.pdmodel.common.PDMatrix;
 import org.apache.pdfbox.util.Matrix;
-import org.apache.pdfbox.util.TextPosition;
 import org.xmlcml.euclid.Angle;
 import org.xmlcml.euclid.Real;
 import org.xmlcml.euclid.Real2;
@@ -78,6 +73,7 @@ import org.xmlcml.graphics.svg.SVGText;
 import org.xmlcml.graphics.svg.SVGTitle;
 import org.xmlcml.graphics.svg.SVGUtil;
 import org.xmlcml.pdf2svg.util.PDF2SVGUtil;
+import org.xmlcml.pdf2svg.util.Util_1_8;
 
 /** converts a PDPage to SVG
  * Originally used PageDrawer to capture the PDF operations.These have been
@@ -85,7 +81,8 @@ import org.xmlcml.pdf2svg.util.PDF2SVGUtil;
  * @author pm286 and Murray Jensen
  *
  */
-public class PDFPage2SVGConverter extends PageDrawer {
+// 1.8 public class PDFPage2SVGConverter extends PageDrawer {
+	public class PDFPage2SVGConverter extends AMIGraphicsStreamEngine {
 	
 	private static final double DEFAULT_FONT_SIZE = 8.0;
 	private static final int _BOLD_FONT_MIN = 410;
@@ -144,8 +141,17 @@ public class PDFPage2SVGConverter extends PageDrawer {
 
 	private Set<String> weightSet = new HashSet<String>();
 	
-	public PDFPage2SVGConverter() throws IOException {
-		super();
+	
+	public PDFPage2SVGConverter(PDFRenderer renderer, PDPage page) throws IOException {
+		this(new AMIPageDrawerParameters(renderer, page));
+	}
+	
+	public PDFPage2SVGConverter(PDPage page) throws IOException {
+		this(new AMIPageDrawerParameters((PDFRenderer) null, page));
+	}
+	
+	public PDFPage2SVGConverter(AMIPageDrawerParameters pageDrawerParameters) throws IOException {
+		super(pageDrawerParameters.getPage());
 	}
 
 	/** called for each page by PDF2SVGConverter
@@ -155,7 +161,7 @@ public class PDFPage2SVGConverter extends PageDrawer {
 	 */
 	public SVGSVG convertPageToSVG(PDPage page, PDF2SVGConverter converter) {
 		debugCount = 0;
-		pageSize = null;	// reset size for each page
+		// invisible
 		this.pdf2svgConverter = converter;
 		this.amiFontManager = converter.getAmiFontManager();
 		amiFontManager.setNullFontDescriptorReport(true);
@@ -167,15 +173,26 @@ public class PDFPage2SVGConverter extends PageDrawer {
 	void drawPage(PDPage p) {
 		LOG.trace("startPage");
 		ensurePageSize();
-		page = p;
+		// fails
+//		page = p;
 		reportedEncodingError = false;
 
 		try {
-			if (page.getContents() != null) {
-				PDResources resources = page.findResources();
+//			if (page.getContents() != null) {
+			if (getPage().getContents() != null) {
+//				PDResources resources = page.findResources();
+				PDResources resources = getPage().getResources();
 				ensurePageSize();
 				// can be very slow - 35 secs/page sometimes
-				processStream(page, resources, page.getContents().getStream());
+// 1.8				processStream(getPage(), resources, getPage().getContents(). getStream());
+				Iterator<PDStream> streams = getPage().getContentStreams();
+				while (streams.hasNext()) {
+					PDStream stream = streams.next();
+					if (stream instanceof PDContentStream) {
+// 1.8						processStream((PDContentStream) stream);
+						throw new RuntimeException("how do we process streams?");
+					}
+				}
 			}
 		} catch (Exception e) {
 			// PDFBox routines have a very bad feature of trapping exceptions
@@ -202,7 +219,7 @@ public class PDFPage2SVGConverter extends PageDrawer {
 				SVGPath path = new SVGPath(shapeString);
 				Real2Range bbox = path.getBoundingBox();
 				SVGShape box = null;
-				box = new SVGRect(bbox);
+				box = SVGRect.createFromReal2Range(bbox);
 				box.setFill("none");
 				box.setStroke(color[icol]);
 				box.setOpacity(1.0);
@@ -240,48 +257,48 @@ public class PDFPage2SVGConverter extends PageDrawer {
      *
      * @throws IOException If there is an IO error while drawing the page.
      */
-    public void drawPage( Graphics g, PDPage p, Dimension pageDimension ) throws IOException {
-    	super.drawPage(g, p, pageDimension);
-    	// cannot use this because private
-    	// graphics = (Graphics2D)g;
-        Graphics2D g2d = (Graphics2D)g;
-//	        g2d = (Graphics2D)g;
-        page = p;
-        pageSize = pageDimension;
-        g2d.setRenderingHint( RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON );
-        g2d.setRenderingHint( RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON );
-        // Only if there is some content, we have to process it. 
-        // Otherwise we are done here and we will produce an empty page
-        if ( page.getContents() != null) {
-            PDResources resources = page.findResources();
-            processStream( page, resources, page.getContents().getStream() );
-        }
-        List annotations = page.getAnnotations();
-        if (annotations.size() > 0) {
-        	throw new RuntimeException("ANNOTATIONS");
-        }
-        for( int i=0; i<annotations.size(); i++ ) {
-            PDAnnotation annot = (PDAnnotation)annotations.get( i );
-            PDRectangle rect = annot.getRectangle();
-            String appearanceName = annot.getAppearanceStream();
-            PDAppearanceDictionary appearDictionary = annot.getAppearance();
-            if( appearDictionary != null ) {
-                if( appearanceName == null ) {
-                    appearanceName = "default";
-                }
-                Map appearanceMap = appearDictionary.getNormalAppearance();
-                if (appearanceMap != null) { 
-                    PDAppearanceStream appearance = 
-                        (PDAppearanceStream)appearanceMap.get( appearanceName ); 
-                    if( appearance != null ) { 
-                        g.translate( (int)rect.getLowerLeftX(), (int)-rect.getLowerLeftY() ); 
-                        processSubStream( page, appearance.getResources(), appearance.getStream() ); 
-                        g.translate( (int)-rect.getLowerLeftX(), (int)+rect.getLowerLeftY() ); 
-                    }
-                }
-            }
-        }
-    }
+//    public void drawPage( Graphics g, PDPage p, Dimension pageDimension ) throws IOException {
+//    	super.drawPage(g, p, pageDimension);
+//    	// cannot use this because private
+//    	// graphics = (Graphics2D)g;
+//        Graphics2D g2d = (Graphics2D)g;
+////	        g2d = (Graphics2D)g;
+//        page = p;
+//        pageSize = pageDimension;
+//        g2d.setRenderingHint( RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON );
+//        g2d.setRenderingHint( RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON );
+//        // Only if there is some content, we have to process it. 
+//        // Otherwise we are done here and we will produce an empty page
+//        if ( page.getContents() != null) {
+//            PDResources resources = page.findResources();
+//            processStream( page, resources, page.getContents().getStream() );
+//        }
+//        List annotations = page.getAnnotations();
+//        if (annotations.size() > 0) {
+//        	throw new RuntimeException("ANNOTATIONS");
+//        }
+//        for( int i=0; i<annotations.size(); i++ ) {
+//            PDAnnotation annot = (PDAnnotation)annotations.get( i );
+//            PDRectangle rect = annot.getRectangle();
+//            String appearanceName = annot.getAppearanceStream();
+//            PDAppearanceDictionary appearDictionary = annot.getAppearance();
+//            if( appearDictionary != null ) {
+//                if( appearanceName == null ) {
+//                    appearanceName = "default";
+//                }
+//                Map appearanceMap = appearDictionary.getNormalAppearance();
+//                if (appearanceMap != null) { 
+//                    PDAppearanceStream appearance = 
+//                        (PDAppearanceStream)appearanceMap.get( appearanceName ); 
+//                    if( appearance != null ) { 
+//                        g.translate( (int)rect.getLowerLeftX(), (int)-rect.getLowerLeftY() ); 
+//                        processSubStream( page, appearance.getResources(), appearance.getStream() ); 
+//                        g.translate( (int)-rect.getLowerLeftX(), (int)+rect.getLowerLeftY() ); 
+//                    }
+//                }
+//            }
+//        }
+//    }
 
 
 	private void ensureDefs1() {
@@ -307,18 +324,18 @@ xmlns="http://www.w3.org/2000/svg">
 	 * 
 	 */
 	private void ensurePageSize() {
-		if (pageSize == null) {
-			if (page != null) {
-				PDRectangle mediaBox = page.findMediaBox();
-				pageSize = mediaBox == null ? null : mediaBox.createDimension();
-				pageSize = pageSize == null ? DEFAULT_DIMENSION : pageSize;
-				LOG.trace("set dimension: "+pageSize);
-			}
-		}
+//		if (pageSize == null) {
+//			if (page != null) {
+//				PDRectangle mediaBox = page.findMediaBox();
+//				pageSize = mediaBox == null ? null : mediaBox.createDimension();
+//				pageSize = pageSize == null ? DEFAULT_DIMENSION : pageSize;
+//				LOG.trace("set dimension: "+pageSize);
+//			}
+//		}
+		throw new RuntimeException("pageSize NYI");
 	}
 	
-
-	@Override
+// must link this in
 	protected void processTextPosition(TextPosition textPosition) {
 		this.textPosition = textPosition;
 		charname = null;
@@ -356,11 +373,21 @@ xmlns="http://www.w3.org/2000/svg">
 //			annotateContent(svgText, textContent, charCode, charname, charCode, encoding);
 		}
 		if (SYMBOL.equalsIgnoreCase(fontFamilyName)) {
-			LOG.trace("symbol >> "+charname+"/"+charCode+"/"+Integer.toHexString(charCode)+" w "+pdFont.getFontWidth(charCode));
+// 1.8			LOG.trace("symbol >> "+charname+"/"+charCode+"/"+Integer.toHexString(charCode)+" w "+pdFont.getFontWidth(charCode));
+			try {
+				LOG.trace("symbol >> "+charname+"/"+charCode+"/"+Integer.toHexString(charCode)+" w "+pdFont.getWidth(charCode));
+			} catch (IOException e) {
+				throw new RuntimeException("Unexpected IOException ", e);
+			}
 		}
 		debugChar();
 
-		LOG.trace("Fn: "+fontName+"; Ff: "+fontFamilyName+"; "+textContent+"; "+charCode+"; "+charname+" w "+pdFont.getFontWidth(charCode));
+// 1.8		LOG.trace("Fn: "+fontName+"; Ff: "+fontFamilyName+"; "+textContent+"; "+charCode+"; "+charname+" w "+pdFont.getFontWidth(charCode));
+		try {
+		LOG.trace("Fn: "+fontName+"; Ff: "+fontFamilyName+"; "+textContent+"; "+charCode+"; "+charname+" w "+pdFont.getWidth(charCode));
+	} catch (IOException e) {
+		throw new RuntimeException("Unexpected IOException ", e);
+	}
 
 		addContentAndAttributesToSVGText(svgText);
 		changeFontStyles(svgText);
@@ -476,10 +503,14 @@ xmlns="http://www.w3.org/2000/svg">
 	private void getCharCodeAndSetEncodingAndCharname() {
 
 		encoding = amiFont.getEncoding();
-		textContent = textPosition.getCharacter();
+// 1.8		textContent = textPosition.getCharacter();
+		textContent = Util_1_8.getCharacter(textPosition);
+		// hope this is useful
+		processTextPosition(textPosition);
 		charCode = -1;
 		if (encoding == null) {
-			int[] codePoints = textPosition.getCodePoints();
+// 1.8			int[] codePoints = textPosition.getCodePoints();
+			int[] codePoints = textPosition.getCharacterCodes();
 			if (textContent == null && codePoints != null) {
 				charCode = codePoints[0];
 				LOG.trace("charCode "+charCode);
@@ -524,6 +555,11 @@ xmlns="http://www.w3.org/2000/svg">
 		convertCharactersToUnicode();
 	}
 
+	private void getCharacter(TextPosition textPosition2) {
+		// TODO Auto-generated method stub
+		
+	}
+
 	private void convertCharactersToUnicode() {
 		// must have a codePointSet
 		CodePointSet codePointSet = amiFont.getNonStandardFontFamily().getCodePointSet();
@@ -546,14 +582,14 @@ xmlns="http://www.w3.org/2000/svg">
 	}
 
 	private void getCharnameThroughEncoding() {
-		try {
+//		try {
 			// NOTE: charname is the formal name for the character such as "period", "bracket" or "a", "two"
 			charname = encoding.getName(charCode);
 			LOG.trace("code "+charCode+" (font: "+fontSubType+" "+fontName+") "+charname);
-		} catch (IOException e1) {
-			LOG.warn("cannot get char encoding "+" at "+currentXY, e1);
-			annotateText = true;
-		}
+//		} catch (IOException e1) {
+//			LOG.warn("cannot get char encoding "+" at "+currentXY, e1);
+//			annotateText = true;
+//		}
 	}                                                                                                    
 
 	private void addContentAndAttributesToSVGText(SVGText svgText) {
@@ -567,7 +603,8 @@ xmlns="http://www.w3.org/2000/svg">
 		getFontSizeAndSetNotZeroRotations(svgText);
 		float width = getCharacterWidth(pdFont, textContent);
 		if (width < 0.01) {
-			Encoding encoding = pdFont.getFontEncoding();
+// 1.8			Encoding encoding = pdFont.getFontEncoding();
+			Encoding encoding = Util_1_8.getFontEncoding(pdFont);
 			if (encoding instanceof DictionaryEncoding) {
 				DictionaryEncoding dictionaryEncoding = (DictionaryEncoding) encoding;
 				LOG.trace(dictionaryEncoding);
@@ -628,11 +665,14 @@ xmlns="http://www.w3.org/2000/svg">
 		if (pathString == null) {
 			ensurePageSize();
 			PDFGraphics2D graphics = new PDFGraphics2D(amiFont);
-			Matrix textPos = textPosition.getTextPos().copy();
-			float x = textPos.getXPosition();
+// 1.8			Matrix textPos = textPosition.getTextPos().copy();
+			Matrix textPos = textPosition.getTextMatrix();
+// 1.8			float x = textPos.getXPosition();
+			float x = textPos.getTranslateX();
 			// the 0,0-reference has to be moved from the lower left (PDF) to
 			// the upper left (AWT-graphics)
-			float y = pageSize.height - textPos.getYPosition();
+// 1.8			float y = pageSize.height - textPos.getYPosition();
+			float y = getPage().getMediaBox().getHeight() - textPos.getTranslateY();
 			// Set translation to 0,0. We only need the scaling and shearing
 			textPos.setValue(2, 0, 0);
 			textPos.setValue(2, 1, 0);
@@ -641,7 +681,8 @@ xmlns="http://www.w3.org/2000/svg">
 			textPos.setValue(0, 1, (-1) * textPos.getValue(0, 1));
 			textPos.setValue(1, 0, (-1) * textPos.getValue(1, 0));
 			AffineTransform at = textPos.createAffineTransform();
-			PDMatrix fontMatrix = pdFont.getFontMatrix();
+//			PDMatrix fontMatrix = pdFont.getFontMatrix();
+			Matrix fontMatrix = pdFont.getFontMatrix();
 			// matrix is r00 r01 r10 r11 t0 t1
 			double r00 = fontMatrix.getValue(0, 0) * 1000f; 
 			double r11 = fontMatrix.getValue(1, 1) * 1000f; 
@@ -658,12 +699,15 @@ xmlns="http://www.w3.org/2000/svg">
 			// the fontSize is no longer needed as it is already part of the
 			// transformation
 			// we should remove it from the parameter list in the long run
-			try {
-				pdFont.drawString(textPosition.getCharacter(), textPosition.getCodePoints(),
-						graphics, 1, at, x, y);
-			} catch (IOException e) {
-				throw new RuntimeException("font.drawString", e);
-			}
+//			try {
+// 1.8				pdFont.drawString(textPosition.getCharacter(), textPosition.getCodePoints(),
+//				graphics, 1, at, x, y);
+			// this may be useful to draw glyphs...
+//				pdFont.drawString(Util_1_8.getCharacter(textPosition), textPosition.getCharacterCodes(),
+//					graphics, 1, at, x, y);
+//			} catch (IOException e) {
+//				throw new RuntimeException("font.drawString", e);
+//			}
 			pathString = graphics.getCurrentPathString();
 			LOG.trace(charname+": created "+pathString);
 			amiFont.getPathStringByCharnameMap().put(key, pathString);
@@ -870,7 +914,8 @@ xmlns="http://www.w3.org/2000/svg">
 
 	private double getFontSizeAndSetNotZeroRotations(SVGText svgText) {
 		AffineTransform at = testMatrix.createAffineTransform();
-		PDMatrix fontMatrix = pdFont.getFontMatrix();
+//		PDMatrix fontMatrix = pdFont.getFontMatrix();
+		Matrix fontMatrix = pdFont.getFontMatrix();
 		at.scale(fontMatrix.getValue(0, 0) * 1000f,
 				fontMatrix.getValue(1, 1) * 1000f);
 		double scalex = at.getScaleX();
@@ -910,11 +955,14 @@ xmlns="http://www.w3.org/2000/svg">
 	 */
 	private void createAndReOrientateTextPosition(SVGText svgText) {
 		ensurePageSize();
-		testMatrix = textPosition.getTextPos().copy();
-		float x = testMatrix.getXPosition();
+// 1.8		testMatrix = textPosition.getTextPos().copy();
+		testMatrix = textPosition.getTextMatrix();
+// 1.8		float x = testMatrix.getXPosition();
+		float x = testMatrix.getTranslateX();
 		// the 0,0-reference has to be moved from the lower left (PDF) to
 		// the upper left (AWT-graphics)
-		float y = pageSize.height - testMatrix.getYPosition();
+// 1.8		float y = pageSize.height - testMatrix.getYPosition();
+		float y = getPage().getMediaBox().getHeight() - testMatrix.getTranslateY();
 		// Set translation to 0,0. We only need the scaling and shearing
 		testMatrix.setValue(2, 0, 0);
 		testMatrix.setValue(2, 1, 0);
@@ -927,73 +975,81 @@ xmlns="http://www.w3.org/2000/svg">
 	}
 
 	private void createGraphicsStateAndPaintAndComposite(SVGText svgText) {
-		Paint paint = null;
-		try {
-			graphicsState = getGraphicsState();
-			ensurePageSize();
-			PDColorState colorState = null;
-			switch (graphicsState.getTextState().getRenderingMode()) {
-			case PDTextState.RENDERING_MODE_FILL_TEXT:
-				// composite = graphicsState.getNonStrokeJavaComposite();
-				colorState = graphicsState.getNonStrokingColor();
-				paint = colorState.getJavaColor();
-				if (paint == null) {
-					paint = colorState.getPaint(pageSize.height);
-				}
-				svgText.setFill(getCSSColor(paint));
-				break;
-			case PDTextState.RENDERING_MODE_STROKE_TEXT:
-				// composite = graphicsState.getStrokeJavaComposite();
-				colorState = graphicsState.getStrokingColor();
-				paint = colorState.getJavaColor();
-				if (paint == null) {
-					paint = colorState.getPaint(pageSize.height);
-				}
-				Double lineWidth = graphicsState.getLineWidth();
-				svgText.setStroke(getCSSColor(paint));
-				svgText.setStrokeWidth(lineWidth);
-				break;
-			case PDTextState.RENDERING_MODE_NEITHER_FILL_NOR_STROKE_TEXT:
-				// basic support for text rendering mode "invisible"
-				Color nsc = graphicsState.getStrokingColor().getJavaColor();
-				float[] components = { Color.black.getRed(),
-						Color.black.getGreen(), Color.black.getBlue() };
-				paint = new Color(nsc.getColorSpace(), components, 0f);
-				// composite = graphicsState.getStrokeJavaComposite();
-				break;
-			default:
-				// TODO : need to implement....
-				LOG.trace("Unsupported RenderingMode "
-						+ this.getGraphicsState().getTextState()
-								.getRenderingMode()
-						+ " in PageDrawer.processTextPosition()."
-						+ " Using RenderingMode "
-						+ PDTextState.RENDERING_MODE_FILL_TEXT + " instead");
-				// composite = graphicsState.getNonStrokeJavaComposite();
-				paint = graphicsState.getNonStrokingColor().getJavaColor();
-				svgText.setFill(getCSSColor(paint));
-			}
-		} catch (IOException e) {
-			throw new RuntimeException("graphics state error???", e);
-		}
+		throw new RuntimeException("createGraphicsStateAndPaintAndComposite must convert to 2.0");
+	};
+
+	private void createGraphicsStateAndPaintAndComposite_1_8(SVGText svgText) {
+//		Paint paint = null;
+//		try {
+//			graphicsState = getGraphicsState();
+//			ensurePageSize();
+//			PDColorState colorState = null;
+//			
+//			switch (graphicsState.getTextState().getRenderingMode()) {
+//			case PDTextState.RENDERING_MODE_FILL_TEXT:
+//				// composite = graphicsState.getNonStrokeJavaComposite();
+//				colorState = graphicsState.getNonStrokingColor();
+//				paint = colorState.getJavaColor();
+//				if (paint == null) {
+//					paint = colorState.getPaint(pageSize.height);
+//				}
+//				svgText.setFill(getCSSColor(paint));
+//				break;
+//			case PDTextState.RENDERING_MODE_STROKE_TEXT:
+//				// composite = graphicsState.getStrokeJavaComposite();
+//				colorState = graphicsState.getStrokingColor();
+//				paint = colorState.getJavaColor();
+//				if (paint == null) {
+//					paint = colorState.getPaint(pageSize.height);
+//				}
+//				Double lineWidth = graphicsState.getLineWidth();
+//				svgText.setStroke(getCSSColor(paint));
+//				svgText.setStrokeWidth(lineWidth);
+//				break;
+//			case PDTextState.RENDERING_MODE_NEITHER_FILL_NOR_STROKE_TEXT:
+//				// basic support for text rendering mode "invisible"
+//				Color nsc = graphicsState.getStrokingColor().getJavaColor();
+//				float[] components = { Color.black.getRed(),
+//						Color.black.getGreen(), Color.black.getBlue() };
+//				paint = new Color(nsc.getColorSpace(), components, 0f);
+//				// composite = graphicsState.getStrokeJavaComposite();
+//				break;
+//			default:
+//				// TODO : need to implement....
+//				LOG.trace("Unsupported RenderingMode "
+//						+ this.getGraphicsState().getTextState()
+//								.getRenderingMode()
+//						+ " in PageDrawer.processTextPosition()."
+//						+ " Using RenderingMode "
+//						+ PDTextState.RENDERING_MODE_FILL_TEXT + " instead");
+//				// composite = graphicsState.getNonStrokeJavaComposite();
+//				paint = graphicsState.getNonStrokingColor().getJavaColor();
+//				svgText.setFill(getCSSColor(paint));
+//			}
+//		} catch (IOException e) {
+//			throw new RuntimeException("graphics state error???", e);
+//		}
 	}
 
 	/** traps any remaining unimplemented PageDrawer calls
 	 * 
 	 */
-	public Graphics2D getGraphics() {
-		LOG.error("getGraphics was called!!!!!!! (May mean method was not overridden) %n");
-		return null;
-	}
+// 1.8 commented out
+//	public Graphics2D getGraphics() {
+//		LOG.error("getGraphics was called!!!!!!! (May mean method was not overridden) %n");
+//		return null;
+//	}
 
 	public void fillPath(int windingRule) throws IOException {
-		PDColorState colorState = getGraphicsState().getNonStrokingColor();
+// 1.8		PDColorState colorState = getGraphicsState().getNonStrokingColor();
+		PDColor colorState = getGraphicsState().getNonStrokingColor();
 		Paint currentPaint = getCurrentPaint(colorState, "non-stroking");
 		createAndAddSVGPath(windingRule, currentPaint);
 	}
 
 	public void strokePath() throws IOException {
-		PDColorState colorState = getGraphicsState().getStrokingColor(); 
+// 1.8		PDColorState colorState = getGraphicsState().getStrokingColor(); 
+		PDColor colorState = getGraphicsState().getStrokingColor(); 
 		Paint currentPaint = getCurrentPaint(colorState, "stroking");
 		Integer windingRule = null;
 		createAndAddSVGPath(windingRule, currentPaint);
@@ -1007,7 +1063,8 @@ xmlns="http://www.w3.org/2000/svg">
 	private void createAndAddSVGPath(Integer windingRule, Paint currentPaint) {
 //		renderIntent = getGraphicsState().getRenderingIntent(); // probably ignorable at first (converts color maps)
 		dashPattern = getGraphicsState().getLineDashPattern();
-		lineWidth = getGraphicsState().getLineWidth();
+// 1.8		lineWidth = getGraphicsState().getLineWidth();
+		lineWidth = new Double(getGraphicsState().getLineWidth());
 //		PDTextState textState = getGraphicsState().getTextState();  // has things like character and word spacings // not yet used
 		GeneralPath generalPath = getLinePath();
 		if (windingRule != null) {
@@ -1038,33 +1095,37 @@ xmlns="http://www.w3.org/2000/svg">
 
 	private void setDashArray(SVGPath svgPath) {
 		@SuppressWarnings("unchecked")
-		List<Integer> dashIntegerList = (List<Integer>) dashPattern.getDashPattern();
+// 1.8		List<Integer> dashIntegerList = (List<Integer>) dashPattern.getDashPattern();
+		float[] dashArray = dashPattern.getDashArray();
 		StringBuilder sb = new StringBuilder("");
-		LOG.trace("COS ARRAY "+dashIntegerList.size());
-		if (dashIntegerList.size() > 0) {
-			for (int i = 0; i < dashIntegerList.size(); i++) {
+		LOG.trace("COS ARRAY "+dashArray.length);
+		if (dashArray != null) {
+			for (int i = 0; i < dashArray.length; i++) {
 				if (i > 0) {
 					sb.append(" ");
 				}
-				sb.append(dashIntegerList.get(i));
+				sb.append(dashArray[i]);
 			}
 			svgPath.setStrokeDashArray(sb.toString());
 			LOG.trace("dash "+dashPattern);
 		}
 	}
 
-	private Paint getCurrentPaint(PDColorState colorState, String type) throws IOException {
-		Paint currentPaint = colorState.getJavaColor();
-		if (currentPaint == null) {
-			currentPaint = colorState.getPaint(pageSize.height);
-		}
-		if (currentPaint == null) {
-			LOG.trace("ColorSpace "
-					+ colorState.getColorSpace().getName()
-					+ " doesn't provide a " + type
-					+ " color, using white instead!");
-			currentPaint = Color.WHITE;
-		}
+// 1.8	private Paint getCurrentPaint(PDColorState colorState, String type) throws IOException {
+	private Paint getCurrentPaint(PDColor colorState, String type) throws IOException {
+// 1.8		Paint currentPaint = colorState.getJavaColor();
+		Paint currentPaint = null;
+		if (true) throw new RuntimeException("mend getCurrentPaint()");
+//		if (currentPaint == null) {
+//			currentPaint = colorState.getPaint(pageSize.height);
+//		}
+//		if (currentPaint == null) {
+//			LOG.trace("ColorSpace "
+//					+ colorState.getColorSpace().getName()
+//					+ " doesn't provide a " + type
+//					+ " color, using white instead!");
+//			currentPaint = Color.WHITE;
+//		}
 		return currentPaint;
 	}
 
@@ -1072,28 +1133,29 @@ xmlns="http://www.w3.org/2000/svg">
 	 * @throws IOException 
 	 * 
 	 */
-	@Override
-	public void drawImage(Image awtImage, AffineTransform at) {
-//		System.out
-//				.printf("\tdrawImage: awtImage='%s', affineTransform='%s', composite='%s', clip='%s'%n",
-//						awtImage.toString(), at.toString(), getGraphicsState()
-//								.getStrokeJavaComposite().toString(),
-//						getGraphicsState().getCurrentClippingPath().toString());
-		if (awtImage instanceof BufferedImage) {
-			Transform2 t2 = new Transform2(at);
-			BufferedImage bImage = (BufferedImage) awtImage;
-			LOG.trace("IMAGE: x="+bImage.getMinX()+" y="+bImage.getMinY()+" h="+bImage.getHeight()+" w="+bImage.getWidth());
-			int size = bImage.getHeight() * bImage.getWidth(); 
-			if (size > pdf2svgConverter.maxInlineImageSize) {
-				String filename = writeImage(bImage);
-				createImageRef(t2, filename, bImage);
-			} else {
-				createImage(t2, bImage);
-			}
-		} else {
-			LOG.warn("Image not incorporated");
-		}
-	}
+	// 1.8
+//	@Override
+//	public void drawImage(Image awtImage, AffineTransform at) {
+////		System.out
+////				.printf("\tdrawImage: awtImage='%s', affineTransform='%s', composite='%s', clip='%s'%n",
+////						awtImage.toString(), at.toString(), getGraphicsState()
+////								.getStrokeJavaComposite().toString(),
+////						getGraphicsState().getCurrentClippingPath().toString());
+//		if (awtImage instanceof BufferedImage) {
+//			Transform2 t2 = new Transform2(at);
+//			BufferedImage bImage = (BufferedImage) awtImage;
+//			LOG.trace("IMAGE: x="+bImage.getMinX()+" y="+bImage.getMinY()+" h="+bImage.getHeight()+" w="+bImage.getWidth());
+//			int size = bImage.getHeight() * bImage.getWidth(); 
+//			if (size > pdf2svgConverter.maxInlineImageSize) {
+//				String filename = writeImage(bImage);
+//				createImageRef(t2, filename, bImage);
+//			} else {
+//				createImage(t2, bImage);
+//			}
+//		} else {
+//			LOG.warn("Image not incorporated");
+//		}
+//	}
 
 	private String writeImage(BufferedImage bImage) {
 		pdf2svgConverter.imageNumber++;
@@ -1138,10 +1200,10 @@ xmlns="http://www.w3.org/2000/svg">
 	/** used in pageDrawer - shaded type of fill
 	 * 
 	 */
-	@Override
-	public void shFill(COSName shadingName) throws IOException {
-		LOG.trace("Shading Fill Not Implemented");
-	}
+//	@Override
+//	public void shFill(COSName shadingName) throws IOException {
+//		LOG.trace("Shading Fill Not Implemented");
+//	}
 
 	/** creates new <svg> and removes/sets some defaults
 	 * this is partly beacuse SVGFoo may have defaults (bad idea?)
@@ -1160,17 +1222,14 @@ xmlns="http://www.w3.org/2000/svg">
 		return svg;
 	}
 
-	@Override
-	public void setStroke(BasicStroke basicStroke) {
-		this.basicStroke = basicStroke;
-	}
+//	@Override
+//	public void setStroke(BasicStroke basicStroke) {
+//		this.basicStroke = basicStroke;
+//	}
+//
+//	@Override
+//	public BasicStroke getStroke() {
+//		return basicStroke;
+//	}
 
-	@Override
-	public BasicStroke getStroke() {
-		return basicStroke;
-	}
-
-
-
-	
 }

@@ -28,20 +28,23 @@ import java.util.Map;
 
 import javax.print.attribute.standard.PageRanges;
 
-import nu.xom.Document;
-import nu.xom.Serializer;
-
 import org.apache.log4j.Logger;
-import org.apache.pdfbox.exceptions.CryptographyException;
+//import org.apache.pdfbox.util.PDFStreamEngine;
+import org.apache.pdfbox.contentstream.PDFStreamEngine;
+//import org.apache.pdfbox.exceptions.CryptographyException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.util.PDFStreamEngine;
+import org.apache.pdfbox.pdmodel.PDPageTree;
+import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.xmlcml.font.CodePointSet;
 import org.xmlcml.font.FontFamilySet;
 import org.xmlcml.font.NonStandardFontManager;
 import org.xmlcml.graphics.svg.SVGSVG;
 import org.xmlcml.pdf2svg.log.XMLLogger;
 import org.xmlcml.pdf2svg.util.MenuSystem;
+
+import nu.xom.Document;
+import nu.xom.Serializer;
 
 /**
  * Simple app to read PDF documents based on PDFReader.java
@@ -126,7 +129,8 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 
 	private List<File> outfileList;
 	private List<SVGSVG> svgList;
-	private List<PDPage> pdPages;
+//	private List<PDPage> pdPages;
+	private PDPageTree pdPageTree;
 
 	String inputBasename;
 	int pageNumber;
@@ -183,14 +187,19 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 	}
 
 	public void openPDFInputStream(InputStream is) throws IOException {
-		page2svgConverter = new PDFPage2SVGConverter();
+		// this is wrong but should compile
+		AMIPageDrawerParameters pageDrawerParameters = null;
+		page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
 		readDocument(is);
 		openAndProcess((File) null, (URL) null);
 	}
 
 	public void openPDFFile(File file) throws Exception {
 		svgPageList = null;
-		page2svgConverter = new PDFPage2SVGConverter();
+		
+//	1.8	page2svgConverter = new PDFPage2SVGConverter();
+		AMIPageDrawerParameters pageDrawerParameters = null;
+		page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
 		LOG.trace("PDF " + file.getCanonicalPath());
 		readDocument(file, useNonSeqParser, PDFpassword);
 		openAndProcess(file, (URL) null);
@@ -198,15 +207,16 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 	}
 
 	private void openAndProcess(File inputFile, URL url) {
-		pdPages = (List<PDPage>) document.getDocumentCatalog().getAllPages();
+// 1.8		pdPages = (List<PDPage>) document.getDocumentCatalog().getAllPages();
+		pdPageTree = document.getDocumentCatalog().getPages();
 
-		pageRanges = new PageRanges(String.format("1-%d", pdPages.size()));
+		pageRanges = new PageRanges(String.format("1-%d", pdPageTree.getCount()));
 
 		if (useXMLLogger) {
-			xmlLogger.newPDFFile(inputFile.getAbsolutePath(), pdPages.size());
+			xmlLogger.newPDFFile(inputFile.getAbsolutePath(), pdPageTree.getCount());
 		}
 
-		LOG.debug(" .. pages "+pageRanges.toString()+" ("+pdPages.size()+") "); 
+		LOG.debug(" .. pages "+pageRanges.toString()+" ("+pdPageTree.getCount()+") "); 
 
 		createBasename(inputFile);
 		createOutputDirectory(inputBasename);
@@ -227,7 +237,7 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 
 	private void iterateOverPagesAndWriteFiles() {
 		while (pageNumber > 0) {
-			PDPage page = pdPages.get(pageNumber - 1);
+			PDPage page = pdPageTree.get(pageNumber - 1);
 			imageNumber = 0;
 
 			if (useXMLLogger) {
@@ -322,21 +332,24 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 	}
 
 	private void readDocument(File file, boolean useNonSeqParser, String password) throws IOException {
-		if (useNonSeqParser) {
-			document = PDDocument.loadNonSeq(file, null, password);
-		} else {
-			document = PDDocument.load(file);
-			if (document.isEncrypted()) {
-				try {
-					document.decrypt(password);
-				} catch (CryptographyException e) {
-					System.err
-							.printf("Error: Failed to decrypt document in file '%s'.%n",
-									file.getAbsolutePath());
-					return;
-				}
-			}
-		}
+		throw new RuntimeException("recode file loading");
+//		if (useNonSeqParser) {
+////			document = PDDocument.loadNonSeq(file, null, password);
+//		} else {
+//			document = PDDocument.load(file);
+//			if (document.isEncrypted()) {
+//				try {
+//					throw new RuntimeException("decrypt NYI");
+////					document.decrypt(password);
+////				} catch (CryptographyException e) {
+//				} catch (Exception e) {
+//					System.err
+//							.printf("Error: Failed to decrypt document in file '%s'.%n",
+//									file.getAbsolutePath());
+//					return;
+//				}
+//			}
+//		}
 
 	}
 

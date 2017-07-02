@@ -17,7 +17,13 @@ package org.xmlcml.pdf2svg.util;
 
 import nu.xom.Attribute;
 
-import org.apache.pdfbox.pdmodel.common.PDMatrix;
+/**
+ * NOTE PDFBOX2.0.8  REPPLACES PDMatrix with Matrix
+ */
+
+//import org.apache.pdfbox.pdmodel.common.PDMatrix;
+import org.apache.pdfbox.util.Matrix;
+
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.RealMatrix;
 import org.xmlcml.graphics.svg.SVGElement;
@@ -54,7 +60,8 @@ public class PDF2SVGUtil {
 	 * @param fontMatrix
 	 * @return
 	 */
-	public static RealMatrix getRealMatrix(PDMatrix fontMatrix) {
+//	public static RealMatrix getRealMatrix(PDMatrix fontMatrix) {
+	public static RealMatrix getRealMatrix(Matrix fontMatrix) {
 		RealMatrix rm = new RealMatrix(2, 3);
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -69,7 +76,8 @@ public class PDF2SVGUtil {
 	 * @param fontMatrix
 	 * @return
 	 */
-	public static RealArray getRealArray(PDMatrix fontMatrix) {
+//	public static RealArray getRealArray(PDMatrix fontMatrix) {
+	public static RealArray getRealArray(Matrix fontMatrix) {
 		double[] dd = new double[9];
 		int kk = 0;
 		int nrow = 2;

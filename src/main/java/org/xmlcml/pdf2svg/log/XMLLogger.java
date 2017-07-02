@@ -1,6 +1,7 @@
 package org.xmlcml.pdf2svg.log;
 
 import java.io.File;
+
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -16,7 +17,10 @@ import nu.xom.Element;
 import nu.xom.Serializer;
 
 import org.apache.log4j.Logger;
-import org.apache.pdfbox.encoding.Encoding;
+
+//import org.apache.pdfbox.encoding.Encoding;
+import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
+
 import org.xmlcml.graphics.svg.SVGPath;
 import org.xmlcml.pdf2svg.AMIFont;
 

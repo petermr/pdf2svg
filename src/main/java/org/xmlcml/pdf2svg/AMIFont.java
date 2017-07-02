@@ -16,8 +16,6 @@
 package org.xmlcml.pdf2svg;
 
 import java.io.IOException;
-
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,18 +29,24 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.encoding.DictionaryEncoding;
-import org.apache.pdfbox.encoding.Encoding;
-import org.apache.pdfbox.pdmodel.common.PDMatrix;
+
+//import org.apache.pdfbox.encoding.DictionaryEncoding;
+//import org.apache.pdfbox.encoding.Encoding;
+
+//import org.apache.pdfbox.pdmodel.common.PDMatrix;
+import org.apache.pdfbox.util.Matrix;
+
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDFontFactory;
 import org.apache.pdfbox.pdmodel.font.PDSimpleFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
-
+import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
+import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.xmlcml.font.NonStandardFontFamily;
 import org.xmlcml.font.NonStandardFontManager;
+import org.xmlcml.pdf2svg.util.Util_1_8;
 
 /** wrapper for PDType1Font. is meant to manage the bad Fontnames, other
  * fontTypes, etc and try to convert them to a standard approach. 
@@ -203,12 +207,15 @@ and
 	public AMIFont(PDFont pdFont) {
 		fontDescriptor = getFontDescriptorOrDescendantFontDescriptor(pdFont);
 		this.firstDescendantFont = getFirstDescendantFont(pdFont);
-		this.baseFont = pdFont.getBaseFont();
+// 1.8		this.baseFont = pdFont.getBaseFont();
+		this.baseFont = Util_1_8.getBaseFont(pdFont);
 		this.fontType = pdFont.getType();
-		this.encoding = pdFont.getFontEncoding();
+// 1.8		this.encoding = pdFont.getFontEncoding();
+		this.encoding = Util_1_8.getFontEncoding(pdFont);
 		if (encoding == null && pdFont instanceof PDType0Font) {
 			pdFont = firstDescendantFont;
-			encoding = pdFont.getFontEncoding();
+//			encoding = pdFont.getFontEncoding();
+			encoding = Util_1_8.getFontEncoding(pdFont);
 		}
 		fontEncoding = (encoding == null) ? null : encoding.getClass().getSimpleName();
 		this.pdFont = pdFont;
@@ -430,10 +437,11 @@ and
 		return fd;
 	}
 
-	public COSDictionary getToUnicode() {
-		COSDictionary cosDictionary = (COSDictionary) ((PDSimpleFont) pdFont).getToUnicode();
-		return cosDictionary;
-	}
+	// 1.8
+//	public COSDictionary getToUnicode() {
+//		COSDictionary cosDictionary = (COSDictionary) ((PDSimpleFont) pdFont).getToUnicode();
+//		return cosDictionary;
+//	}
 
 	public String toString() {
 
@@ -517,12 +525,14 @@ and
 	 */
 	public Float getFontWidth(byte[] c, int offset, int length)
 			throws IOException {
-		return pdFont == null ? null : pdFont.getFontWidth(c, offset, length);
+		throw new RuntimeException("PDFFont getFontWidth NYI");
+//		return pdFont == null ? null : pdFont.getFontWidth(c, offset, length);
 	}
 
 	public Float getFontHeight(byte[] c, int offset, int length)
 			throws IOException {
-		return pdFont == null ? null : pdFont.getFontHeight(c, offset, length);
+		throw new RuntimeException("PDFFont getFontHeight NYI");
+//		return pdFont == null ? null : pdFont.getFontHeight(c, offset, length);
 	}
 
 	public Float getStringWidth(String string) throws IOException {
@@ -534,11 +544,13 @@ and
 	}
 
 	public String encode(byte[] c, int offset, int length) throws IOException {
-		return pdFont == null ? null : pdFont.encode(c, offset, length);
+		return new String(pdFont.encode(new String(c, offset, length)));
+//		return pdFont == null ? null : pdFont.  encode(c, offset, length);
 	}
 
 	public Integer encodeToCID(byte[] c, int offset, int length) throws IOException {
-		return pdFont == null ? null : pdFont.encodeToCID(c, offset, length);
+		throw new RuntimeException("encodeToCID NYI");
+//		return pdFont == null ? null : pdFont.encodeToCID(c, offset, length);
 	}
 
 	public String getSubType() {
@@ -546,21 +558,31 @@ and
 	}
 
 	public List<Float> getWidths() {
-		return pdFont == null ? null : pdFont.getWidths();
+		throw new RuntimeException("pdFont.getWidths() NYI");
+//		return pdFont == null ? null : pdFont.getWidths();
 	}
 
-	public PDMatrix getFontMatrix() {
+	public Matrix getFontMatrix() {
 		return pdFont == null ? null : pdFont.getFontMatrix();
 	}
 
 	public PDRectangle getFontBoundingBox() throws IOException {
 		PDRectangle pdRect = null;
 		pdRect = fontDescriptor == null ? null : fontDescriptor.getFontBoundingBox();
-		return pdRect != null ? pdRect : ((pdFont == null) ? null : pdFont.getFontBoundingBox());
+//		return pdRect != null ? pdRect : ((pdFont == null) ? null : pdFont.getFontBoundingBox());
+		return (PDRectangle) (pdRect != null ? pdRect : ((pdFont == null) ? null : pdFont.getBoundingBox()));
 	}
 
 	public Float getFontWidth(int charCode) {
-		return pdFont == null ? null : pdFont.getFontWidth(charCode);
+		Float width = null;
+		try {
+			if (pdFont != null) {
+				width = pdFont.getWidth(charCode);
+			}
+		} catch (IOException ioe) {
+			LOG.error("FontWidth Exception "+ioe);
+		}
+		return width;
 	}
 
 	/** delegates from fontDescriptor */

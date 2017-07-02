@@ -20,7 +20,9 @@ import java.util.List;
 
 
 
-import org.apache.pdfbox.pdmodel.common.PDMatrix;
+//import org.apache.pdfbox.pdmodel.common.PDMatrix;
+import org.apache.pdfbox.util.Matrix;
+
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.RealMatrix;
 import org.xmlcml.xml.XMLConstants;
@@ -41,7 +43,8 @@ public class PDF2SVGUtil {
 	 * @param fontMatrix
 	 * @return
 	 */
-	public static RealMatrix getRealMatrix(PDMatrix fontMatrix) {
+//	public static RealMatrix getRealMatrix(PDMatrix fontMatrix) {
+	public static RealMatrix getRealMatrix(Matrix fontMatrix) {
 		RealMatrix rm = new RealMatrix(2, 3);
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -56,7 +59,8 @@ public class PDF2SVGUtil {
 	 * @param fontMatrix
 	 * @return
 	 */
-	public static RealArray getRealArray(PDMatrix fontMatrix) {
+//	public static RealArray getRealArray(PDMatrix fontMatrix) {
+	public static RealArray getRealArray(Matrix fontMatrix) {
 		double[] dd = new double[9];
 		int kk = 0;
 		int nrow = 2;

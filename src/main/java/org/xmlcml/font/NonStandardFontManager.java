@@ -29,7 +29,10 @@ import org.apache.log4j.Logger;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.encoding.StandardEncoding;
+
+//import org.apache.pdfbox.encoding.StandardEncoding;
+import org.apache.pdfbox.pdmodel.font.encoding.StandardEncoding;
+
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
@@ -215,7 +218,8 @@ CharProcs = COSDictionary{(COSName{space}:COSDictionary{(COSName{Length}:COSInt{
 	 * @return
 	 */
 	public static String convertToUnicodeWithPDFStandardEncoding(String symbol) {
-		return StandardEncoding.INSTANCE.getCharacter(symbol);
+		throw new RuntimeException("convertToUnicodeWithPDFStandardEncoding NYI");
+//		return StandardEncoding.INSTANCE.getCharacter(symbol);
 	}
 	
 	public static Map<String, AMIFont> readAmiFonts() {

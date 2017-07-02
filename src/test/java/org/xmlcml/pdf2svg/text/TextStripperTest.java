@@ -1,16 +1,13 @@
 package org.xmlcml.pdf2svg.text;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.util.PDFTextStripper;
-import org.apache.pdfbox.util.PDFText2HTML;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.Test;
 
 
@@ -48,11 +45,12 @@ public class TextStripperTest {
         PDFTextStripper stripper = null;
         if (toHTML) {
         	//stripper = new org.apache.pdfbox.tools.PDFText2HTML();//Don't know why this doesn't link...
-            stripper = new PDFText2HTML("UTF-8");
+// 1.8            stripper = new PDFText2HTML("UTF-8");
+            stripper = new PDFTextStripper();
         } else {
             stripper = new PDFTextStripper();
         }
-        stripper.setForceParsing(force);
+// 1.8        stripper.setForceParsing(force);
         stripper.setSortByPosition(sort);
         stripper.setShouldSeparateByBeads(separateBeads);
         stripper.setStartPage(startPage);

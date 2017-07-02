@@ -1,6 +1,7 @@
 package org.xmlcml.pdf2svg.xmllog;
 
 import java.awt.Color;
+
 import java.awt.Container;
 import java.awt.Graphics2D;
 import java.awt.event.ActionEvent;
@@ -8,6 +9,7 @@ import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.io.FileFilter;
 
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -25,7 +27,6 @@ import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
-import org.apache.pdfbox.util.ExtensionFileFilter;
 import org.xmlcml.euclid.Real2;
 import org.xmlcml.euclid.Transform2;
 import org.xmlcml.graphics.svg.SVGPath;
@@ -247,8 +248,14 @@ public class Viewer extends JFrame implements TreeModel {
 		JFileChooser chooser = new JFileChooser();
 		chooser.setCurrentDirectory(currentDir);
 
-		ExtensionFileFilter xmllogFilter = new ExtensionFileFilter(
-				new String[] { "XML" }, "XML Files");
+// 1.8		ExtensionFileFilter xmllogFilter = new ExtensionFileFilter(
+//				new String[] { "XML" }, "XML Files");
+		javax.swing.filechooser.FileFilter xmllogFilter = new javax.swing.filechooser.FileFilter() {
+			public boolean accept(File pathname) {
+				return pathname != null && pathname.toString().endsWith(".xml");
+			}
+			public String getDescription() { return "xml filename";}			
+		};
 		chooser.setFileFilter(xmllogFilter);
 		int result = chooser.showOpenDialog(Viewer.this);
 		if (result == JFileChooser.APPROVE_OPTION) {
