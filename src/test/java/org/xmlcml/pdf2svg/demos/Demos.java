@@ -2,16 +2,23 @@ package org.xmlcml.pdf2svg.demos;
 
 import java.io.File;
 
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.xmlcml.pdf2svg.AMIGraphicsStreamEngine;
+import org.xmlcml.pdf2svg.Fixtures;
 import org.xmlcml.pdf2svg.PDF2SVGConverter;
+import org.xmlcml.pdf2svg.PDF2SVGTransformer;
 import org.xmlcml.pdf2svg.PDFPage2SVGConverter;
 
 public class Demos {
+	private static final Logger LOG = Logger.getLogger(Demos.class);
+	static {
+		LOG.setLevel(Level.DEBUG);
+	}
 
 	public static void main(String[] args) {
 //			ebola1();
@@ -42,7 +49,6 @@ public class Demos {
 	}
 	
 	@Test
-	@Ignore // until we write the Graphics2D
     public void testPDFBox2_0Example() throws Exception {
         File file = new File("src/main/resources/org/apache/pdfbox/examples/rendering/",
                              "custom-render-demo.pdf");
@@ -53,6 +59,15 @@ public class Demos {
         AMIGraphicsStreamEngine engine = new PDFPage2SVGConverter(renderer, page);
         engine.run();
         doc.close();
+    }
+    
+	@Test
+    public void testMDPI() throws Exception {
+        File file = new File(Fixtures.MDPI_DIR, "materials-05-00027.pdf");
+
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        pdf2svgTransformer.convert(file);
+        
     }
     
 
