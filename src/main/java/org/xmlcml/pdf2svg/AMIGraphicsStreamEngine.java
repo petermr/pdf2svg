@@ -56,25 +56,34 @@ import java.awt.image.Raster;
 import java.awt.image.RenderedImage;
 import java.awt.image.WritableRaster;
 import java.awt.image.renderable.RenderableImage;
-import java.io.File;
 import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
+import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
-import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1CFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
+import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.PDVectorFont;
 import org.apache.pdfbox.pdmodel.graphics.PDLineDashPattern;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
@@ -94,6 +103,7 @@ import org.apache.pdfbox.pdmodel.graphics.state.RenderingMode;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationMarkup;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.PageDrawerParameters;
@@ -103,7 +113,11 @@ import org.xmlcml.euclid.Real;
 import org.xmlcml.euclid.Real2;
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.Transform2;
+import org.xmlcml.euclid.Util;
 import org.xmlcml.graphics.svg.SVGPath;
+
+import com.google.common.collect.HashMultiset;
+import com.google.common.collect.Multiset;
 
 /**
  * from PDFBox2.0
@@ -117,19 +131,29 @@ import org.xmlcml.graphics.svg.SVGPath;
  * 
  * PMR: rename to AMIGraphicsStreamEngine
  */
-public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
-{
+public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
+
+    // NOTE: there are may more methods in PDFStreamEngine which can be overridden here too.
+	private static final Logger LOG = Logger.getLogger(AMIGraphicsStreamEngine.class);
+	static {
+		LOG.setLevel(Level.DEBUG);
+	}
+	private final static int NDEC = 2;
+
+	private String currentPathString;
+	private AMIFont amiFont;
+	private SVGPath svgPath;
 	
-    // START of OF CustomGraphicsStreamEngine
 
     /**
      * Constructor.
      *
+     *This one is called from PDFPage2SVGConverter(AMIPageDrawerParameters pageDrawerParameters)
      * @param page PDF Page
      */
-    protected AMIGraphicsStreamEngine(PDPage page)
-    {
+    protected AMIGraphicsStreamEngine(PDPage page) {
         super(page);
+        System.out.println("************** " + page + " ************************");
         this.renderer = null;
     }
 
@@ -139,10 +163,9 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * @param parameters Parameters for page drawing.
      * @throws IOException If there is an error loading properties from the file.
      */
-    public AMIGraphicsStreamEngine(PageDrawerParameters parameters) throws IOException
-    {
+    public AMIGraphicsStreamEngine(PageDrawerParameters parameters) throws IOException {
         super(parameters.getPage());
-//        this.renderer = parameters.getRenderer();
+        LOG.debug("AMIGraphicsStreamEngine "+parameters);
         this.renderer = null;
     }
 
@@ -152,12 +175,10 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      *
      * @throws IOException If there is an IO error while drawing the page.
      */
-    public void run() throws IOException
-    {
+    public void run() throws IOException {
         processPage(getPage());
 
-        for (PDAnnotation annotation : getPage().getAnnotations())
-        {
+        for (PDAnnotation annotation : getPage().getAnnotations()) {
             showAnnotation(annotation);
         }
     }
@@ -249,46 +270,48 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * Overridden from PDFStreamEngine.
      */
     @Override
-    public void showTextString(byte[] string) throws IOException
-    {
-        System.out.print("showTextString \"");
+    public void showTextString(byte[] string) throws IOException {
+//    	System.out.print("~"+new String(string)+"~");
+    	System.out.print(""+new String(string)+"");
         super.showTextString(string);
-        System.out.println("\"");
     }
 
     /**
      * Overridden from PDFStreamEngine.
      */
     @Override
-    public void showTextStrings(COSArray array) throws IOException
-    {
-        System.out.print("showTextStrings \"");
+    public void showTextStrings(COSArray array) throws IOException {
+    	for (int i = 0; i < array.size(); i++) {
+    		COSBase base = array.get(i);
+    		String s = base.toString();
+    		if (base instanceof COSFloat) {
+    			s = String.valueOf(((COSFloat)base).doubleValue());
+    			s = "";
+    		} else if (base instanceof COSInteger) {
+        		s = String.valueOf(((COSInteger)base).intValue());
+        		s = "";
+    		} else if (base instanceof COSString) {
+        		s = String.valueOf(((COSString)base).getString());
+    		} else {
+    			throw new RuntimeException("Class "+base.getClass());
+//    			System.out.print("@>"+base+"<@");
+    		}
+    		System.out.print(""+s+"");
+    	}
         super.showTextStrings(array);
-        System.out.println("\"");
+//        //System.out.println("\"");
     }
 
     /**
      * Overridden from PDFStreamEngine.
+     * the displacement is the characterWidth I thnk - not sure of coords
      */
     @Override
-    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                             Vector displacement) throws IOException
-    {
-        System.out.print(unicode);
-        super.showGlyph(textRenderingMatrix, font, code, unicode, displacement);
+    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicodeChar,
+                             Vector displacement) throws IOException {
+        super.showGlyph(textRenderingMatrix, font, code, unicodeChar, displacement);
     }
     
-    // NOTE: there are may more methods in PDFStreamEngine which can be overridden here too.
-    
-    // END OF CustomGraphicsStreamEngine
-    
-    // START OF PDFGraphics2D (developed for PDFBox 1.8)
-    
-	private final static Logger LOG = Logger.getLogger(PDFGraphics2D.class);
-	private String currentPathString;
-	private AMIFont amiFont;
-	private SVGPath svgPath;
-	
 	private void draw(Shape s) {};
 	private boolean drawImage(Image img, AffineTransform xform, ImageObserver obs) {return true;};
 	private void drawImage(BufferedImage img, BufferedImageOp op, int x, int y) {};
@@ -299,6 +322,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 	private void drawString(AttributedCharacterIterator iterator, int x, int y) {};
 	private void drawString(AttributedCharacterIterator iterator, float x, float y) {};
 	private void drawGlyphVector(GlyphVector g, float x, float y) {
+    	LOG.debug("GlyphVector "+g);
 		Shape shape = g.getOutline();
 		AffineTransform at = new AffineTransform();
 		this.currentPathString = SVGPath.getPathAsDString(shape.getPathIterator(at));
@@ -367,6 +391,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 	private void dispose() {};
 
 	private String getCurrentPathString() {
+    	LOG.debug("GET CURRENT PATH STRING " + this.currentPathString);
 		return this.currentPathString;
 	}
 
@@ -419,36 +444,36 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
     // glyph caches
     private final Map<PDFont, GlyphCache> glyphCaches = new HashMap<PDFont, GlyphCache>();
+	private Multiset<String> codePointSet;
 
     /**
      * Returns the parent renderer.
      */
-    public final PDFRenderer getRenderer()
-    {
+    public final PDFRenderer getRenderer() {
         return renderer;
     }
 
     /**
      * Returns the underlying Graphics2D. May be null if drawPage has not yet been called.
      */
-    protected final Graphics2D getGraphics()
-    {
+    protected final Graphics2D getGraphics() {
         return graphics;
     }
 
     /**
      * Returns the current line path. This is reset to empty after each fill/stroke.
      */
-    protected final GeneralPath getLinePath()
-    {
+    protected final GeneralPath getLinePath() {
+    	System.out.print(" GPath()");
+//    	LOG.debug("LINEPATH "+linePath);
         return linePath;
     }
 
     /**
      * Sets high-quality rendering hints on the current Graphics2D.
      */
-    private void setRenderingHints()
-    {
+    private void setRenderingHints() {
+    	if (graphics == null) return;
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                                   RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING,
@@ -464,8 +489,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * @param pageSize The size of the page to draw.
      * @throws IOException If there is an IO error while drawing the page.
      */
-    public void drawPage(Graphics g, PDRectangle pageSize) throws IOException
-    {
+    public void drawPage(Graphics g, PDRectangle pageSize) throws IOException {
         graphics = (Graphics2D) g;
         xform = graphics.getTransform();
         this.pageSize = pageSize;
@@ -484,8 +508,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
         processPage(getPage());
 
-        for (PDAnnotation annotation : getPage().getAnnotations())
-        {
+        for (PDAnnotation annotation : getPage().getAnnotations()) {
             showAnnotation(annotation);
         }
 
@@ -503,8 +526,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * @throws IOException If there is an IO error while drawing the page.
      */
     void drawTilingPattern(Graphics2D g, PDTilingPattern pattern, PDColorSpace colorSpace,
-                                  PDColor color, Matrix patternMatrix) throws IOException
-    {
+                                  PDColor color, Matrix patternMatrix) throws IOException {
         Graphics2D oldGraphics = graphics;
         graphics = g;
 
@@ -532,20 +554,16 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     /**
      * Returns an AWT paint for the given PDColor.
      */
-    protected Paint getPaint(PDColor color) throws IOException
-    {
+    protected Paint getPaint(PDColor color) throws IOException {
         PDColorSpace colorSpace = color.getColorSpace();
-        if (!(colorSpace instanceof PDPattern))
-        {
+        if (!(colorSpace instanceof PDPattern)) {
             float[] rgb = colorSpace.toRGB(color.getComponents());
             return new Color(rgb[0], rgb[1], rgb[2]);
         }
-        else
-        {
+        else {
             PDPattern patternSpace = (PDPattern)colorSpace;
             PDAbstractPattern pattern = patternSpace.getPattern(color);
-            if (pattern instanceof PDTilingPattern)
-            {
+            if (pattern instanceof PDTilingPattern) {
             	throw new RuntimeException("TilingPattern NYI");
 //                PDTilingPattern tilingPattern = (PDTilingPattern) pattern;
 //
@@ -561,12 +579,10 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 //                            patternSpace.getUnderlyingColorSpace(), color, xform);
 //                }
             }
-            else
-            {
+            else {
                 PDShadingPattern shadingPattern = (PDShadingPattern)pattern;
                 PDShading shading = shadingPattern.getShading();
-                if (shading == null)
-                {
+                if (shading == null) {
                     LOG.error("shadingPattern is null, will be filled with transparency");
                     return new Color(0,0,0,0);
                 }
@@ -579,37 +595,37 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
     // sets the clipping path using caching for performance, we track lastClip manually because
     // Graphics2D#getClip() returns a new object instead of the same one passed to setClip
-    private void setClip()
-    {
+    private void setClip() {
         Area clippingPath = getGraphicsState().getCurrentClippingPath();
-        if (clippingPath != lastClip)
-        {
+        if (clippingPath != lastClip) {
         	if (graphics == null) {
-        		throw new RuntimeException("null graphics");
+//        		LOG.debug("null graphics");
+        	} else {
+	            graphics.setClip(clippingPath);
+	            lastClip = clippingPath;
         	}
-            graphics.setClip(clippingPath);
-            lastClip = clippingPath;
         }
     }
 
     @Override
-    public void beginText() throws IOException
-    {
+    public void beginText() throws IOException {
+    	System.out.print(" BT ");
+//		LOG.debug("beginText");
         setClip();
         beginTextClip();
     }
 
     @Override
-    public void endText() throws IOException
-    {
+    public void endText() throws IOException {
+    	System.out.print(" ET ");
+//		LOG.debug("endText");
         endTextClip();
     }
     
     /**
      * Begin buffering the text clipping path, if any.
      */
-    private void beginTextClip()
-    {
+    private void beginTextClip() {
         // buffer the text clip because it represents a single clipping area
         textClippingArea = new Area();        
     }
@@ -617,14 +633,12 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     /**
      * End buffering the text clipping path, if any.
      */
-    private void endTextClip()
-    {
+    private void endTextClip() {
         PDGraphicsState state = getGraphicsState();
         RenderingMode renderingMode = state.getTextState().getRenderingMode();
         
         // apply the buffered clip as one area
-        if (renderingMode.isClip() && !textClippingArea.isEmpty())
-        {
+        if (renderingMode.isClip() && !textClippingArea.isEmpty()) {
             state.intersectClippingPath(textClippingArea);
             textClippingArea = null;
 
@@ -636,23 +650,40 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
     @Override
     protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                                 Vector displacement) throws IOException
-    {
+                                 Vector displacement) throws IOException {
+    	String fontName = AMIFont.stripPrefix(font);
+    	String codePointS = fontName+";"+code+";"+unicode+";"+displacement;
+    	ensureCodePointSet();
+    	codePointSet.add(codePointS);
+    	
         AffineTransform at = textRenderingMatrix.createAffineTransform();
         at.concatenate(font.getFontMatrix().createAffineTransform());
 
         // create cache if it does not exist
-        PDVectorFont vectorFont = ((PDVectorFont)font);
-        GlyphCache cache = glyphCaches.get(font);
-        if (cache == null)
-        {
-            cache = new GlyphCache(vectorFont);
-            glyphCaches.put(font, cache);
+
+        // don't understand this yet - try skipping type1 fonts
+        if (font instanceof PDType1Font || font instanceof PDType1CFont) {
+        	// skip
+        } else {
+        	LOG.trace("Found vector font!!");
+        	// outline font?
+	        PDVectorFont vectorFont = ((PDVectorFont)font);
+	        GlyphCache cache = glyphCaches.get(font);
+	        if (cache == null) {
+	            cache = new GlyphCache(vectorFont);
+	            glyphCaches.put(font, cache);
+	        }
+	        
+	        GeneralPath path = cache.getPathForCharacterCode(code);
+	        drawGlyph(path, font, code, displacement, at);
         }
-        
-        GeneralPath path = cache.getPathForCharacterCode(code);
-        drawGlyph(path, font, code, displacement, at);
     }
+
+	private void ensureCodePointSet() {
+		if (codePointSet == null) {
+	    	codePointSet = HashMultiset.create();
+    	}
+	}
 
     /**
      * Renders a glyph.
@@ -664,20 +695,16 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * @param at the transformation
      * @throws IOException if something went wrong
      */
-    private void drawGlyph(GeneralPath path, PDFont font, int code, Vector displacement, AffineTransform at) throws IOException
-    {
+    private void drawGlyph(GeneralPath path, PDFont font, int code, Vector displacement, AffineTransform at) throws IOException {
         PDGraphicsState state = getGraphicsState();
         RenderingMode renderingMode = state.getTextState().getRenderingMode();
         
-        if (path != null)
-        {
+        if (path != null) {
             // stretch non-embedded glyph if it does not match the width contained in the PDF
-            if (!font.isEmbedded())
-            {
+            if (!font.isEmbedded()) {
                 float fontWidth = font.getWidthFromFont(code);
                 if (fontWidth > 0 && // ignore spaces
-                        Math.abs(fontWidth - displacement.getX() * 1000) > 0.0001)
-                {
+                        Math.abs(fontWidth - displacement.getX() * 1000) > 0.0001) {
                     float pdfWidth = displacement.getX() * 1000;
                     at.scale(pdfWidth / fontWidth, 1);
                 }
@@ -686,33 +713,35 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             // render glyph
             Shape glyph = at.createTransformedShape(path);
 
-            if (renderingMode.isFill())
-            {
-                graphics.setComposite(state.getNonStrokingJavaComposite());
-                graphics.setPaint(getNonStrokingPaint());
-                setClip();
-                graphics.fill(glyph);
+            if (graphics == null) {
+            	LOG.trace("Null graphics");
+            } else {
+	            if (renderingMode.isFill()) {
+	                graphics.setComposite(state.getNonStrokingJavaComposite());
+	                graphics.setPaint(getNonStrokingPaint());
+	                setClip();
+	                graphics.fill(glyph);
+	            }
+	
+	            if (renderingMode.isStroke()) {
+	                graphics.setComposite(state.getStrokingJavaComposite());
+	                graphics.setPaint(getStrokingPaint());
+	                graphics.setStroke(getStroke());
+	                setClip();
+	                graphics.draw(glyph);
+	            }
             }
 
-            if (renderingMode.isStroke())
-            {
-                graphics.setComposite(state.getStrokingJavaComposite());
-                graphics.setPaint(getStrokingPaint());
-                graphics.setStroke(getStroke());
-                setClip();
-                graphics.draw(glyph);
-            }
-
-            if (renderingMode.isClip())
-            {
+            if (renderingMode.isClip()) {
                 textClippingArea.add(new Area(glyph));
             }
         }
     }
     
     @Override
-    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3)
-    {
+    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) {
+    	System.out.print(" R[("+Util.format(p0.getX(),NDEC)+","+Util.format(p0.getY(),NDEC)+"),("+Util.format(p2.getX(),NDEC)+","+Util.format(p2.getY(),NDEC)+")] ");
+//		LOG.debug("appendRectangle "+p0);
         // to ensure that the path is created in the right direction, we have to create
         // it by combining single lines instead of creating a simple rectangle
         linePath.moveTo((float) p0.getX(), (float) p0.getY());
@@ -726,44 +755,36 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     //TODO: move soft mask apply to getPaint()?
-    private Paint applySoftMaskToPaint(Paint parentPaint, PDSoftMask softMask) throws IOException
-    {
-        if (softMask == null || softMask.getGroup() == null)
-        {
+    private Paint applySoftMaskToPaint(Paint parentPaint, PDSoftMask softMask) throws IOException {
+        if (softMask == null || softMask.getGroup() == null) {
             return parentPaint;
         }
         PDColor backdropColor = null;
-        if (COSName.LUMINOSITY.equals(softMask.getSubType()))
-        {
+        if (COSName.LUMINOSITY.equals(softMask.getSubType())) {
             COSArray backdropColorArray = softMask.getBackdropColor();
             PDColorSpace colorSpace = softMask.getGroup().getGroup().getColorSpace();
-            if (colorSpace != null && backdropColorArray != null)
-            {
+            if (colorSpace != null && backdropColorArray != null) {
                 backdropColor = new PDColor(backdropColorArray, colorSpace);
             }
         }
         TransparencyGroup transparencyGroup = new TransparencyGroup(softMask.getGroup(), true, 
                 softMask.getInitialTransformationMatrix(), backdropColor);
         BufferedImage image = transparencyGroup.getImage();
-        if (image == null)
-        {
+        if (image == null) {
             // Adobe Reader ignores empty softmasks instead of using bc color
             // sample file: PDFJS-6967_reduced_outside_softmask.pdf
             return parentPaint;
         }
         BufferedImage gray = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-        if (COSName.ALPHA.equals(softMask.getSubType()))
-        {
+        if (COSName.ALPHA.equals(softMask.getSubType())) {
             gray.setData(image.getAlphaRaster());
         }
-        else if (COSName.LUMINOSITY.equals(softMask.getSubType()))
-        {
+        else if (COSName.LUMINOSITY.equals(softMask.getSubType())) {
             Graphics g = gray.getGraphics();
             g.drawImage(image, 0, 0, null);
             g.dispose();
         }
-        else
-        {
+        else {
             throw new IOException("Invalid soft mask subtype.");
         }
         gray = getRotatedImage(gray);
@@ -778,25 +799,21 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     // 2. change transparencyGroup.getBounds() to getOrigin(), because size isn't used in SoftMask
     // 3. Is it possible to create the softmask and transparency group in the correct rotation?
     //    (needs rendering identity testing before committing!)
-    private void adjustRectangle(Rectangle2D r)
-    {
+    private void adjustRectangle(Rectangle2D r) {
         Matrix m = new Matrix(xform);
-        if (pageRotation == 90)
-        {
+        if (pageRotation == 90) {
             r.setRect(pageSize.getHeight() * m.getScalingFactorY() - r.getY() - r.getHeight(), 
                       r.getX(), 
                       r.getWidth(), 
                       r.getHeight());
         }
-        if (pageRotation == 180)
-        {
+        if (pageRotation == 180) {
             r.setRect(pageSize.getWidth() * m.getScalingFactorX() - r.getX() - r.getWidth(),
                       pageSize.getHeight() * m.getScalingFactorY() - r.getY() - r.getHeight(),
                       r.getWidth(),
                       r.getHeight());
         }
-        if (pageRotation == 270)
-        {
+        if (pageRotation == 270) {
             r.setRect(r.getY(), 
                       pageSize.getWidth() * m.getScalingFactorX() - r.getX() - r.getWidth(), 
                       r.getWidth(), 
@@ -805,12 +822,10 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     // return quadrant-rotated image with adjusted size
-    private BufferedImage getRotatedImage(BufferedImage gray) throws IOException
-    {
+    private BufferedImage getRotatedImage(BufferedImage gray) throws IOException {
         BufferedImage gray2;
         AffineTransform at;
-        switch (pageRotation % 360)
-        {
+        switch (pageRotation % 360) {
             case 90:
                 gray2 = new BufferedImage(gray.getHeight(), gray.getWidth(), BufferedImage.TYPE_BYTE_GRAY);
                 at = AffineTransform.getQuadrantRotateInstance(1, gray.getHeight() / 2d, gray.getHeight() / 2d);
@@ -833,47 +848,40 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     // returns the stroking AWT Paint
-    private Paint getStrokingPaint() throws IOException
-    {
+    private Paint getStrokingPaint() throws IOException {
         return applySoftMaskToPaint(
                 getPaint(getGraphicsState().getStrokingColor()),
                 getGraphicsState().getSoftMask());
     }
 
     // returns the non-stroking AWT Paint
-    private Paint getNonStrokingPaint() throws IOException
-    {
+    private Paint getNonStrokingPaint() throws IOException {
         return applySoftMaskToPaint(
                 getPaint(getGraphicsState().getNonStrokingColor()),
                 getGraphicsState().getSoftMask());
     }
 
     // create a new stroke based on the current CTM and the current stroke
-    private BasicStroke getStroke()
-    {
+    private BasicStroke getStroke() {
         PDGraphicsState state = getGraphicsState();
 
         // apply the CTM
         float lineWidth = transformWidth(state.getLineWidth());
 
         // minimum line width as used by Adobe Reader
-        if (lineWidth < 0.25)
-        {
+        if (lineWidth < 0.25) {
             lineWidth = 0.25f;
         }
 
         PDLineDashPattern dashPattern = state.getLineDashPattern();
         int phaseStart = dashPattern.getPhase();
         float[] dashArray = dashPattern.getDashArray();
-        if (dashArray != null)
-        {
+        if (dashArray != null) {
             // apply the CTM
-            for (int i = 0; i < dashArray.length; ++i)
-            {
+            for (int i = 0; i < dashArray.length; ++i) {
                 // minimum line dash width avoids JVM crash, see PDFBOX-2373, PDFBOX-2929, PDFBOX-3204
                 float w = transformWidth(dashArray[i]);
-                if (w != 0)
-                {
+                if (w != 0) {
                     dashArray[i] = Math.max(w, 0.035f);
                 }
             }
@@ -881,16 +889,12 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
             // empty dash array is illegal
             // avoid also infinite and NaN values (PDFBOX-3360)
-            if (dashArray.length == 0 || Float.isInfinite(phaseStart) || Float.isNaN(phaseStart))
-            {
+            if (dashArray.length == 0 || Float.isInfinite(phaseStart) || Float.isNaN(phaseStart)) {
                 dashArray = null;
             }
-            else
-            {
-                for (int i = 0; i < dashArray.length; ++i)
-                {
-                    if (Float.isInfinite(dashArray[i]) || Float.isNaN(dashArray[i]))
-                    {
+            else {
+                for (int i = 0; i < dashArray.length; ++i) {
+                    if (Float.isInfinite(dashArray[i]) || Float.isNaN(dashArray[i])) {
                         dashArray = null;
                         break;
                     }
@@ -902,11 +906,15 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     @Override
-    public void strokePath() throws IOException
-    {
-        graphics.setComposite(getGraphicsState().getStrokingJavaComposite());
-        graphics.setPaint(getStrokingPaint());
-        graphics.setStroke(getStroke());
+    public void strokePath() throws IOException {
+		LOG.debug("strokePath "+linePath);
+		if (graphics != null) {
+	        graphics.setComposite(getGraphicsState().getStrokingJavaComposite());
+	        graphics.setPaint(getStrokingPaint());
+	        graphics.setStroke(getStroke());
+		} else {
+			LOG.debug("NULL Graphics");
+		}
         setClip();
         //TODO bbox of shading pattern should be used here? (see fillPath)
         graphics.draw(linePath);
@@ -914,10 +922,14 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     @Override
-    public void fillPath(int windingRule) throws IOException
-    {
-        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
-        graphics.setPaint(getNonStrokingPaint());
+    public void fillPath(int windingRule) throws IOException {
+		LOG.debug("FILLPATH "+windingRule);
+		if (graphics != null) {
+	        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+	        graphics.setPaint(getNonStrokingPaint());
+		} else {
+			LOG.debug("NULL Graphics");
+		}
         setClip();
         linePath.setWindingRule(windingRule);
 
@@ -928,29 +940,27 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         Rectangle2D bounds = linePath.getBounds2D();
         boolean noAntiAlias = isRectangular(linePath) && bounds.getWidth() > 1 &&
                                                          bounds.getHeight() > 1;
-        if (noAntiAlias)
-        {
+        if (noAntiAlias) {
             graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                                       RenderingHints.VALUE_ANTIALIAS_OFF);
         }
 
-        if (!(graphics.getPaint() instanceof Color))
-        {
+        if (graphics == null) {
+        	LOG.debug("NULL GRAPHICS");
+        } else if (!(graphics.getPaint() instanceof Color)) {
             // apply clip to path to avoid oversized device bounds in shading contexts (PDFBOX-2901)
             Area area = new Area(linePath);
             area.intersect(new Area(graphics.getClip()));
             intersectShadingBBox(getGraphicsState().getNonStrokingColor(), area);
             graphics.fill(area);
         }
-        else
-        {
+        else {
             graphics.fill(linePath);
         }
         
         linePath.reset();
 
-        if (noAntiAlias)
-        {
+        if (noAntiAlias) {
             // JDK 1.7 has a bug where rendering hints are reset by the above call to
             // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
             setRenderingHints();
@@ -960,18 +970,14 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     // checks whether this is a shading pattern and if yes,
     // get the transformed BBox and intersect with current paint area
     // need to do it here and not in shading getRaster() because it may have been rotated
-    private void intersectShadingBBox(PDColor color, Area area) throws IOException
-    {
-        if (color.getColorSpace() instanceof PDPattern)
-        {
+    private void intersectShadingBBox(PDColor color, Area area) throws IOException {
+        if (color.getColorSpace() instanceof PDPattern) {
             PDColorSpace colorSpace = color.getColorSpace();
             PDAbstractPattern pat = ((PDPattern) colorSpace).getPattern(color);
-            if (pat instanceof PDShadingPattern)
-            {
+            if (pat instanceof PDShadingPattern) {
                 PDShading shading = ((PDShadingPattern) pat).getShading();
                 PDRectangle bbox = shading.getBBox();
-                if (bbox != null)
-                {
+                if (bbox != null) {
                     Matrix m = Matrix.concatenate(getInitialMatrix(), pat.getMatrix());
                     Area bboxArea = new Area(bbox.transform(m));
                     area.intersect(bboxArea);
@@ -983,38 +989,31 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     /**
      * Returns true if the given path is rectangular.
      */
-    private boolean isRectangular(GeneralPath path)
-    {
+    private boolean isRectangular(GeneralPath path) {
         PathIterator iter = path.getPathIterator(null);
         double[] coords = new double[6];
         int count = 0;
         int[] xs = new int[4];
         int[] ys = new int[4];
-        while (!iter.isDone())
-        {
-            switch(iter.currentSegment(coords))
-            {
+        while (!iter.isDone()) {
+            switch(iter.currentSegment(coords)) {
                 case PathIterator.SEG_MOVETO:
-                    if (count == 0)
-                    {
+                    if (count == 0) {
                         xs[count] = (int)Math.floor(coords[0]);
                         ys[count] = (int)Math.floor(coords[1]);
                     }
-                    else
-                    {
+                    else {
                         return false;
                     }
                     count++;
                     break;
 
                 case PathIterator.SEG_LINETO:
-                    if (count < 4)
-                    {
+                    if (count < 4) {
                         xs[count] = (int)Math.floor(coords[0]);
                         ys[count] = (int)Math.floor(coords[1]);
                     }
-                    else
-                    {
+                    else {
                         return false;
                     }
                     count++;
@@ -1029,8 +1028,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             iter.next();
         }
 
-        if (count == 4)
-        {
+        if (count == 4) {
             return xs[0] == xs[1] || xs[0] == xs[2] ||
                    ys[0] == ys[1] || ys[0] == ys[3];
         }
@@ -1044,8 +1042,8 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
      * @throws IOException If there is an IO error while filling the path.
      */
     @Override
-    public void fillAndStrokePath(int windingRule) throws IOException
-    {
+    public void fillAndStrokePath(int windingRule) throws IOException {
+		LOG.debug("FILLANDSTROKEPATH "+windingRule);
         // TODO can we avoid cloning the path?
         GeneralPath path = (GeneralPath)linePath.clone();
         fillPath(windingRule);
@@ -1054,47 +1052,53 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     @Override
-    public void clip(int windingRule)
-    {
+    public void clip(int windingRule) {
+//		LOG.debug("CLIP "+windingRule);
         // the clipping path will not be updated until the succeeding painting operator is called
         clipWindingRule = windingRule;
     }
 
     @Override
-    public void moveTo(float x, float y)
-    {
+    public void moveTo(float x, float y) {
+    	System.out.print(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+//		LOG.debug("MOVETO " + x + "; " + y);
         linePath.moveTo(x, y);
     }
 
     @Override
-    public void lineTo(float x, float y)
-    {
+    public void lineTo(float x, float y) {
+    	System.out.print(" L"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+//		LOG.debug("LINETO " + x + "; " + y);
         linePath.lineTo(x, y);
     }
 
     @Override
-    public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3)
-    {
+    public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) {
+    	System.out.print(" C"+Util.format(x1,NDEC)+","+Util.format(y1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(y2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(y3,NDEC)+" ");
+//		LOG.debug("CURVETO " + x1 + "; " + y3);
         linePath.curveTo(x1, y1, x2, y2, x3, y3);
     }
 
     @Override
-    public Point2D getCurrentPoint()
-    {
+    public Point2D getCurrentPoint() {
+    	Point2D point = linePath.getCurrentPoint();
+    	System.out.print(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
+//		LOG.debug("GET CURRENTPOINT "+linePath.getCurrentPoint());
         return linePath.getCurrentPoint();
     }
 
     @Override
-    public void closePath()
-    {
+    public void closePath() {
+    	System.out.print(" CL ");
+//		LOG.debug("CLOSE PATH "+linePath);
         linePath.closePath();
     }
 
     @Override
-    public void endPath()
-    {
-        if (clipWindingRule != -1)
-        {
+    public void endPath() {
+    	System.out.print(" EP ");
+//		LOG.debug("END PATH "+linePath);
+        if (clipWindingRule != -1) {
             linePath.setWindingRule(clipWindingRule);
             getGraphicsState().intersectClippingPath(linePath);
             clipWindingRule = -1;
@@ -1103,30 +1107,25 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
     
     @Override
-    public void drawImage(PDImage pdImage) throws IOException
-    {
+    public void drawImage(PDImage pdImage) throws IOException {
         Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
         AffineTransform at = ctm.createAffineTransform();
 
-        if (!pdImage.getInterpolate())
-        {
+        if (!pdImage.getInterpolate()) {
             boolean isScaledUp = pdImage.getWidth() < Math.round(at.getScaleX()) ||
                                  pdImage.getHeight() < Math.round(at.getScaleY());
 
             // if the image is scaled down, we use smooth interpolation, eg PDFBOX-2364
             // only when scaled up do we use nearest neighbour, eg PDFBOX-2302 / mori-cvpr01.pdf
             // stencils are excluded from this rule (see survey.pdf)
-            if (isScaledUp || pdImage.isStencil())
-            {
+            if (isScaledUp || pdImage.isStencil()) {
                 graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                         RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
             }
         }
 
-        if (pdImage.isStencil())
-        {
-            if (getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern)
-            {
+        if (pdImage.isStencil()) {
+            if (getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern) {
                 // The earlier code for stencils (see "else") doesn't work with patterns because the
                 // CTM is not taken into consideration.
                 // this code is based on the fact that it is easily possible to draw the mask and 
@@ -1171,13 +1170,10 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
                 WritableRaster alpha = renderedMask.getRaster();
                 int h = renderedMask.getRaster().getHeight();
                 int w = renderedMask.getRaster().getWidth();
-                for (int y = 0; y < h; y++)
-                {
-                    for (int x = 0; x < w; x++)
-                    {
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
                         alphaPixel = alpha.getPixel(x, y, alphaPixel);
-                        if (alphaPixel[0] == 255)
-                        {
+                        if (alphaPixel[0] == 255) {
                             raster.setPixel(x, y, transparent);
                         }
                     }
@@ -1190,8 +1186,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
                         AffineTransform.getTranslateInstance(bounds.getMinX(), bounds.getMinY()), 
                         null);
             }
-            else
-            {
+            else {
                 // fill the image with stenciled paint
                 BufferedImage image = pdImage.getStencilImage(getNonStrokingPaint());
 
@@ -1199,27 +1194,24 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
                 drawBufferedImage(image, at);
             }
         }
-        else
-        {
+        else {
             // draw the image
             drawBufferedImage(pdImage.getImage(), at);
         }
 
-        if (!pdImage.getInterpolate())
-        {
+        if (!pdImage.getInterpolate()) {
             // JDK 1.7 has a bug where rendering hints are reset by the above call to
             // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
             setRenderingHints();
         }
     }
 
-    private void drawBufferedImage(BufferedImage image, AffineTransform at) throws IOException
-    {
+    private void drawBufferedImage(BufferedImage image, AffineTransform at) throws IOException {
+    	if (graphics == null) return;
         graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
         setClip();
         PDSoftMask softMask = getGraphicsState().getSoftMask();
-        if( softMask != null )
-        {
+        if( softMask != null ) {
             AffineTransform imageTransform = new AffineTransform(at);
             imageTransform.scale(1, -1);
             imageTransform.translate(0, -1);
@@ -1231,11 +1223,9 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             Rectangle2D unitRect = new Rectangle2D.Float(0, 0, 1, 1);
             graphics.fill(at.createTransformedShape(unitRect));
         }
-        else
-        {
+        else {
             COSBase transfer = getGraphicsState().getTransfer();
-            if (transfer instanceof COSArray || transfer instanceof COSDictionary)
-            {
+            if (transfer instanceof COSArray || transfer instanceof COSDictionary) {
                 image = applyTransferFunction(image, transfer);
             }
 
@@ -1248,15 +1238,12 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         }
     }
 
-    private BufferedImage applyTransferFunction(BufferedImage image, COSBase transfer) throws IOException
-    {
+    private BufferedImage applyTransferFunction(BufferedImage image, COSBase transfer) throws IOException {
         BufferedImage bim;
-        if (image.getColorModel().hasAlpha())
-        {
+        if (image.getColorModel().hasAlpha()) {
             bim = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
         }
-        else
-        {
+        else {
             bim = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
         }
 
@@ -1264,8 +1251,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         // and maps (actually arrays[256] to be faster) to avoid calculating values several times
         Integer rMap[], gMap[], bMap[];
         PDFunction rf, gf, bf;
-        if (transfer instanceof COSArray)
-        {
+        if (transfer instanceof COSArray) {
             COSArray ar = (COSArray) transfer;
             rf = PDFunction.create(ar.getObject(0));
             gf = PDFunction.create(ar.getObject(1));
@@ -1274,8 +1260,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             gMap = new Integer[256];
             bMap = new Integer[256];
         }
-        else
-        {
+        else {
             rf = PDFunction.create(transfer);
             gf = rf;
             bf = rf;
@@ -1286,41 +1271,33 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
         // apply the transfer function to each color, but keep alpha
         float[] input = new float[1];
-        for (int x = 0; x < image.getWidth(); ++x)
-        {
-            for (int y = 0; y < image.getHeight(); ++y)
-            {
+        for (int x = 0; x < image.getWidth(); ++x) {
+            for (int y = 0; y < image.getHeight(); ++y) {
                 int rgb = image.getRGB(x, y);
                 int ri = (rgb >> 16) & 0xFF;
                 int gi = (rgb >> 8) & 0xFF;
                 int bi = rgb & 0xFF;
                 int ro, go, bo;
-                if (rMap[ri] != null)
-                {
+                if (rMap[ri] != null) {
                     ro = rMap[ri];
                 }
-                else
-                {
+                else {
                     input[0] = (ri & 0xFF) / 255f;
                     ro = (int) (rf.eval(input)[0] * 255);
                     rMap[ri] = ro;
                 }
-                if (gMap[gi] != null)
-                {
+                if (gMap[gi] != null) {
                     go = gMap[gi];
                 }
-                else
-                {
+                else {
                     input[0] = (gi & 0xFF) / 255f;
                     go = (int) (gf.eval(input)[0] * 255);
                     gMap[gi] = go;
                 }
-                if (bMap[bi] != null)
-                {
+                if (bMap[bi] != null) {
                     bo = bMap[bi];
                 }
-                else
-                {
+                else {
                     input[0] = (bi & 0xFF) / 255f;
                     bo = (int) (bf.eval(input)[0] * 255);
                     bMap[bi] = bo;
@@ -1332,11 +1309,9 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     @Override
-    public void shadingFill(COSName shadingName) throws IOException
-    {
+    public void shadingFill(COSName shadingName) throws IOException {
         PDShading shading = getResources().getShading(shadingName);
-        if (shading == null)
-        {
+        if (shading == null) {
             LOG.error("shading " + shadingName + " does not exist in resources dictionary");
             return;
         }
@@ -1352,48 +1327,40 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         // get the transformed BBox and intersect with current clipping path
         // need to do it here and not in shading getRaster() because it may have been rotated
         PDRectangle bbox = shading.getBBox();
-        if (bbox != null)
-        {
+        if (bbox != null) {
             Area bboxArea = new Area(bbox.transform(ctm));
             bboxArea.intersect(getGraphicsState().getCurrentClippingPath());
             graphics.fill(bboxArea);
         }
-        else
-        {
+        else {
             graphics.fill(getGraphicsState().getCurrentClippingPath());
         }
     }
 
     @Override
-    public void showAnnotation(PDAnnotation annotation) throws IOException
-    {
+    public void showAnnotation(PDAnnotation annotation) throws IOException {
+    	if (graphics == null) return;
         lastClip = null;
         //TODO support more annotation flags (Invisible, NoZoom, NoRotate)
         // Example for NoZoom can be found in p5 of PDFBOX-2348
         int deviceType = graphics.getDeviceConfiguration().getDevice().getType();
-        if (deviceType == GraphicsDevice.TYPE_PRINTER && !annotation.isPrinted())
-        {
+        if (deviceType == GraphicsDevice.TYPE_PRINTER && !annotation.isPrinted()) {
             return;
         }
-        if (deviceType == GraphicsDevice.TYPE_RASTER_SCREEN && annotation.isNoView())
-        {
+        if (deviceType == GraphicsDevice.TYPE_RASTER_SCREEN && annotation.isNoView()) {
             return;
         }
-        if (annotation.isHidden())
-        {
+        if (annotation.isHidden()) {
             return;
         }
         super.showAnnotation(annotation);
 
-        if (annotation.getAppearance() == null)
-        {
-            if (annotation instanceof PDAnnotationLink)
-            {
+        if (annotation.getAppearance() == null) {
+            if (annotation instanceof PDAnnotationLink) {
                 drawAnnotationLinkBorder((PDAnnotationLink) annotation);
             }
 
-            if (annotation instanceof PDAnnotationMarkup && annotation.getSubtype().equals(PDAnnotationMarkup.SUB_TYPE_INK))
-            {
+            if (annotation instanceof PDAnnotationMarkup && annotation.getSubtype().equals(PDAnnotationMarkup.SUB_TYPE_INK)) {
                 drawAnnotationInk((PDAnnotationMarkup) annotation);
             }
         }
@@ -1402,67 +1369,52 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     // return border info. BorderStyle must be provided as parameter because
     // method is not available in the base class
     private AnnotationBorder getAnnotationBorder(PDAnnotation annotation, 
-            PDBorderStyleDictionary borderStyle)
-    {
+            PDBorderStyleDictionary borderStyle) {
         AnnotationBorder ab = new AnnotationBorder();
         COSArray border = annotation.getBorder();
-        if (borderStyle == null)
-        {
-            if (border.get(2) instanceof COSNumber)
-            {
+        if (borderStyle == null) {
+            if (border.get(2) instanceof COSNumber) {
                 ab.width = ((COSNumber) border.getObject(2)).floatValue();
             }
-            if (border.size() > 3)
-            {
+            if (border.size() > 3) {
                 COSBase base3 = border.getObject(3);
-                if (base3 instanceof COSArray)
-                {
+                if (base3 instanceof COSArray) {
                     ab.dashArray = ((COSArray) base3).toFloatArray();
                 }
             }
         }
-        else
-        {
+        else {
             ab.width = borderStyle.getWidth();
-            if (borderStyle.getStyle().equals(PDBorderStyleDictionary.STYLE_DASHED))
-            {
+            if (borderStyle.getStyle().equals(PDBorderStyleDictionary.STYLE_DASHED)) {
                 ab.dashArray = borderStyle.getDashStyle().getDashArray();
             }
-            if (borderStyle.getStyle().equals(PDBorderStyleDictionary.STYLE_UNDERLINE))
-            {
+            if (borderStyle.getStyle().equals(PDBorderStyleDictionary.STYLE_UNDERLINE)) {
                 ab.underline = true;
             }
         }
         ab.color = annotation.getColor();
-        if (ab.color == null)
-        {
+        if (ab.color == null) {
             // spec is unclear, but black seems to be the right thing to do
             ab.color = new PDColor(new float[] { 0 }, PDDeviceGray.INSTANCE);
         }
-        if (ab.dashArray != null)
-        {
+        if (ab.dashArray != null) {
             boolean allZero = true;
-            for (float f : ab.dashArray)
-            {
-                if (f != 0)
-                {
+            for (float f : ab.dashArray) {
+                if (f != 0) {
                     allZero = false;
                     break;
                 }
             }
-            if (allZero)
-            {
+            if (allZero) {
                 ab.dashArray = null;
             }
         }
         return ab;
     }
     
-    private void drawAnnotationLinkBorder(PDAnnotationLink link) throws IOException
-    {
+    private void drawAnnotationLinkBorder(PDAnnotationLink link) throws IOException {
         AnnotationBorder ab = getAnnotationBorder(link, link.getBorderStyle());
-        if (ab.width == 0 || ab.color.getComponents().length == 0)
-        {
+        if (ab.width == 0 || ab.color.getComponents().length == 0) {
             return;
         }
         PDRectangle rectangle = link.getRectangle();
@@ -1471,35 +1423,29 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         BasicStroke stroke = new BasicStroke(ab.width, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10, ab.dashArray, 0);
         graphics.setStroke(stroke);
         graphics.setClip(null);
-        if (ab.underline)
-        {
+        if (ab.underline) {
             graphics.drawLine((int) rectangle.getLowerLeftX(), (int) rectangle.getLowerLeftY(),
                     (int) (rectangle.getLowerLeftX() + rectangle.getWidth()), (int) rectangle.getLowerLeftY());
         }
-        else
-        {
+        else {
             graphics.drawRect((int) rectangle.getLowerLeftX(), (int) rectangle.getLowerLeftY(),
                     (int) rectangle.getWidth(), (int) rectangle.getHeight());
         }
         graphics.setStroke(oldStroke);
     }
 
-    private void drawAnnotationInk(PDAnnotationMarkup inkAnnotation) throws IOException
-    {
-        if (!inkAnnotation.getCOSObject().containsKey(COSName.INKLIST))
-        {
+    private void drawAnnotationInk(PDAnnotationMarkup inkAnnotation) throws IOException {
+        if (!inkAnnotation.getCOSObject().containsKey(COSName.INKLIST)) {
             return;
         }
         //TODO there should be an InkAnnotation class with a getInkList method
         COSBase base = inkAnnotation.getCOSObject().getDictionaryObject(COSName.INKLIST);
-        if (!(base instanceof COSArray))
-        {
+        if (!(base instanceof COSArray)) {
             return;
         }
         // PDF spec does not mention /Border for ink annotations, but it is used if /BS is not available
         AnnotationBorder ab = getAnnotationBorder(inkAnnotation, inkAnnotation.getBorderStyle());
-        if (ab.width == 0 || ab.color.getComponents().length == 0)
-        {
+        if (ab.width == 0 || ab.color.getComponents().length == 0) {
             return;
         }
         graphics.setPaint(getPaint(ab.color));
@@ -1509,10 +1455,8 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         graphics.setStroke(stroke);
         graphics.setClip(null);
         COSArray pathsArray = (COSArray) base;
-        for (COSBase baseElement : pathsArray)
-        {
-            if (!(baseElement instanceof COSArray))
-            {
+        for (COSBase baseElement : pathsArray) {
+            if (!(baseElement instanceof COSArray)) {
                 continue;
             }
             COSArray pathArray = (COSArray) baseElement;
@@ -1521,20 +1465,16 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             // "When drawn, the points shall be connected by straight lines or curves 
             // in an implementation-dependent way" - we do lines.
             GeneralPath path = new GeneralPath();
-            for (int i = 0; i < nPoints; ++i)
-            {
+            for (int i = 0; i < nPoints; ++i) {
                 COSBase bx = pathArray.getObject(i * 2);
                 COSBase by = pathArray.getObject(i * 2 + 1);
-                if (bx instanceof COSNumber && by instanceof COSNumber)
-                {
+                if (bx instanceof COSNumber && by instanceof COSNumber) {
                     float x = ((COSNumber) bx).floatValue();
                     float y = ((COSNumber) by).floatValue();
-                    if (i == 0)
-                    {
+                    if (i == 0) {
                         path.moveTo(x, y);
                     }
-                    else
-                    {
+                    else {
                         path.lineTo(x, y);
                     }
                 }
@@ -1545,13 +1485,11 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     }
 
     @Override
-    public void showTransparencyGroup(PDTransparencyGroup form) throws IOException
-    {
+    public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
         TransparencyGroup group =
                 new TransparencyGroup(form, false, getGraphicsState().getCurrentTransformationMatrix(), null);
         BufferedImage image = group.getImage();
-        if (image == null)
-        {
+        if (image == null) {
             // image is empty, don't bother
             return;
         }
@@ -1578,15 +1516,13 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         float y = pageSize.getUpperRightY() - bbox.getUpperRightY();
         graphics.translate(x * xScale, y * yScale);
 
-        if (flipTG)
-        {
+        if (flipTG) {
             graphics.translate(0, image.getHeight());
             graphics.scale(1, -1);
         }
 
         PDSoftMask softMask = getGraphicsState().getSoftMask();
-        if (softMask != null)
-        {
+        if (softMask != null) {
             Paint awtPaint = new TexturePaint(image,
                     new Rectangle2D.Float(0, 0, image.getWidth(), image.getHeight()));
             awtPaint = applySoftMaskToPaint(awtPaint, softMask);
@@ -1594,16 +1530,14 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             graphics.fill(
                     new Rectangle2D.Float(0, 0, bbox.getWidth() * xScale, bbox.getHeight() * yScale));
         }
-        else
-        {
+        else {
             graphics.drawImage(image, null, null);
         }
 
         graphics.setTransform(prev);
     }
 
-    private static class AnnotationBorder
-    {
+    private static class AnnotationBorder {
         private float[] dashArray = null;
         private boolean underline = false;
         private float width = 0;
@@ -1613,8 +1547,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
     /**
      * Transparency group.
      **/
-    private final class TransparencyGroup
-    {
+    private final class TransparencyGroup {
         private final BufferedImage image;
         private final PDRectangle bbox;
 
@@ -1636,8 +1569,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
          * @throws IOException
          */
         private TransparencyGroup(PDTransparencyGroup form, boolean isSoftMask, Matrix ctm, 
-                PDColor backdropColor) throws IOException
-        {
+                PDColor backdropColor) throws IOException {
             Graphics2D g2dOriginal = graphics;
             Area lastClipOriginal = lastClip;
 
@@ -1651,8 +1583,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             Area clip = (Area)getGraphicsState().getCurrentClippingPath().clone();
             clip.intersect(new Area(transformedBox));
             Rectangle2D clipRect = clip.getBounds2D();
-            if (clipRect.isEmpty())
-            {
+            if (clipRect.isEmpty()) {
                 image = null;
                 bbox = null;
                 minX = 0;
@@ -1678,17 +1609,14 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             height = maxY - minY;
 
             // FIXME - color space
-            if (isGray(form.getGroup().getColorSpace()))
-            {
+            if (isGray(form.getGroup().getColorSpace())) {
                 image = create2ByteGrayAlphaImage(width, height);
             }
-            else
-            {
+            else {
                 image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             }
             Graphics2D g = image.createGraphics();
-            if (isSoftMask && backdropColor != null)
-            {
+            if (isSoftMask && backdropColor != null) {
                 // "If the subtype is Luminosity, the transparency group XObject G shall be 
                 // composited with a fully opaque backdrop whose colour is everywhere defined 
                 // by the soft-mask dictionary's BC entry."
@@ -1726,19 +1654,15 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
 
             graphics = g;
             setRenderingHints();
-            try
-            {
-                if (isSoftMask)
-                {
+            try {
+                if (isSoftMask) {
                     processSoftMask(form);
                 }
-                else
-                {
+                else {
                     processTransparencyGroup(form);
                 }
             }
-            finally 
-            {
+            finally {
                 flipTG = oldFlipTG;
                 lastClip = lastClipOriginal;
                 graphics.dispose();
@@ -1752,8 +1676,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
         }
 
         // http://stackoverflow.com/a/21181943/535646
-        private BufferedImage create2ByteGrayAlphaImage(int width, int height) 
-        {
+        private BufferedImage create2ByteGrayAlphaImage(int width, int height) {
             /**
              * gray + alpha
              */
@@ -1780,38 +1703,30 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
             return new BufferedImage(CM_GRAY_ALPHA, raster, false, null);
         }
 
-        private boolean isGray(PDColorSpace colorSpace)
-        {
-            if (colorSpace instanceof PDDeviceGray)
-            {
+        private boolean isGray(PDColorSpace colorSpace) {
+            if (colorSpace instanceof PDDeviceGray) {
                 return true;
             }
-            if (colorSpace instanceof PDICCBased)
-            {
-                try
-                {
+            if (colorSpace instanceof PDICCBased) {
+                try {
                     return ((PDICCBased) colorSpace).getAlternateColorSpace() instanceof PDDeviceGray;
                 }
-                catch (IOException ex)
-                {
+                catch (IOException ex) {
                     return false;
                 }
             }
             return false;
         }
 
-        public BufferedImage getImage()
-        {
+        public BufferedImage getImage() {
             return image;
         }
 
-        public PDRectangle getBBox()
-        {
+        public PDRectangle getBBox() {
             return bbox;
         }
 
-        public Rectangle2D getBounds()
-        {
+        public Rectangle2D getBounds() {
             Point2D size = new Point2D.Double(pageSize.getWidth(), pageSize.getHeight());
             // apply the underlying Graphics2D device's DPI transform and y-axis flip
             Matrix m = new Matrix(xform);
@@ -1823,4 +1738,90 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine
                     width, height);
         }
     }
+    
+    @Override
+    protected void processSoftMask(PDTransparencyGroup group) throws IOException {
+    	super.processSoftMask(group);
+    	LOG.debug("***processSoftMask "+group);
+    }
+    
+    @Override
+    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
+    	super.processTransparencyGroup(group);
+    	LOG.debug("****processTransparencyGroup "+group);
+    }
+    
+    @Override
+    protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) throws IOException {
+    	super.processType3Stream(charProc, textRenderingMatrix);
+    	LOG.debug("****processType3Stream "+charProc+"; "+textRenderingMatrix);
+    }
+    
+    @Override
+    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+    	super.processAnnotation(annotation, appearance);
+    	LOG.debug("****processAnnotation "+annotation+"; "+appearance);
+    }
+
+    @Override
+    public PDAppearanceStream getAppearance(PDAnnotation annotation) {
+    	LOG.debug("****getAppearance "+annotation);
+    	return super.getAppearance(annotation);
+    }
+    
+    @Override
+    protected void processChildStream(PDContentStream contentStream, PDPage page) throws IOException {
+    	LOG.debug("****processChildStream "+contentStream+"; "+page);
+    	super.processChildStream(contentStream, page);
+    }
+
+    @Override
+    //probably not to be subclassed
+    protected void applyTextAdjustment(float tx, float ty) throws IOException {
+//    	LOG.trace("****textAdjustment "+tx+";"+ty);
+    	super.applyTextAdjustment(tx, ty);
+    }
+
+    @SuppressWarnings("deprecation")
+	protected void showText(byte[] string) throws IOException {
+//    	System.out.print("~"+new String(string)+"~");
+    	System.out.print(""+new String(string)+"");
+    	super.showText(string);
+    }
+    
+    @Override
+    protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
+            String unicode, Vector displacement) throws IOException {
+    	LOG.debug("****showType3Glyph ");
+    	super.showType3Glyph(textRenderingMatrix, font, code, unicode, displacement);
+    }
+
+    // probably not to be subclassed 
+//    @Override
+//    public void processOperator(String operation, List<COSBase> arguments) throws IOException {
+//    	LOG.debug("****processOperator "+operation);
+//       	super.processOperator(operation, arguments);
+//    }
+
+    // probably no need to override
+//    @Override
+//    public void processOperator(Operator operator, List<COSBase> arguments) throws IOException {
+//    	LOG.debug("****processOperator "+operator);
+//       	super.processOperator(operator, arguments);
+//    }
+
+    @Override
+    public void unsupportedOperator(Operator operator, List<COSBase> arguments) throws IOException {
+    	LOG.debug("****unsupportedOperator "+operator);
+       	super.unsupportedOperator(operator, arguments);
+    }
+
+    @Override
+    protected void operatorException(Operator operator, List<COSBase> operands, IOException e)
+            throws IOException {
+    	LOG.debug("****operatorException");
+       	super.operatorException(operator, operands, e);
+    }
+
+
 }

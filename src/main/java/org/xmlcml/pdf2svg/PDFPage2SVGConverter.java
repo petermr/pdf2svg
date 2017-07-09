@@ -78,11 +78,12 @@ import org.xmlcml.pdf2svg.util.Util_1_8;
 /** converts a PDPage to SVG
  * Originally used PageDrawer to capture the PDF operations.These have been
  * largely intercepted and maybe PageDrawer could be retired at some stage
- * @author pm286 and Murray Jensen
+ * @author pm286
  *
  */
 // 1.8 public class PDFPage2SVGConverter extends PageDrawer {
-	public class PDFPage2SVGConverter extends AMIGraphicsStreamEngine {
+// PDFBox 2.0.6 version
+public class PDFPage2SVGConverter extends AMIGraphicsStreamEngine {
 	
 	private static final double DEFAULT_FONT_SIZE = 8.0;
 	private static final int _BOLD_FONT_MIN = 410;
@@ -160,6 +161,7 @@ import org.xmlcml.pdf2svg.util.Util_1_8;
 	 * @param converter
 	 */
 	public SVGSVG convertPageToSVG(PDPage page, PDF2SVGConverter converter) {
+		LOG.debug("CONVERTPAGE");
 		debugCount = 0;
 		// invisible
 		this.pdf2svgConverter = converter;
@@ -171,7 +173,7 @@ import org.xmlcml.pdf2svg.util.Util_1_8;
 	}
 	
 	void drawPage(PDPage p) {
-		LOG.trace("startPage");
+		LOG.debug("STARTPAGE");
 		ensurePageSize();
 		// fails
 //		page = p;
@@ -336,7 +338,7 @@ xmlns="http://www.w3.org/2000/svg">
 	}
 	
 // must link this in
-	protected void processTextPosition(TextPosition textPosition) {
+	private void processTextPosition(TextPosition textPosition) {
 		this.textPosition = textPosition;
 		charname = null;
 		charWasLogged = false;
@@ -1061,6 +1063,7 @@ xmlns="http://www.w3.org/2000/svg">
 	 * @param currentPaint
 	 */
 	private void createAndAddSVGPath(Integer windingRule, Paint currentPaint) {
+		getOrCreateSVG();
 //		renderIntent = getGraphicsState().getRenderingIntent(); // probably ignorable at first (converts color maps)
 		dashPattern = getGraphicsState().getLineDashPattern();
 // 1.8		lineWidth = getGraphicsState().getLineWidth();
@@ -1115,7 +1118,7 @@ xmlns="http://www.w3.org/2000/svg">
 	private Paint getCurrentPaint(PDColor colorState, String type) throws IOException {
 // 1.8		Paint currentPaint = colorState.getJavaColor();
 		Paint currentPaint = null;
-		if (true) throw new RuntimeException("mend getCurrentPaint()");
+		LOG.trace("mend getCurrentPaint()");
 //		if (currentPaint == null) {
 //			currentPaint = colorState.getPaint(pageSize.height);
 //		}
@@ -1210,8 +1213,10 @@ xmlns="http://www.w3.org/2000/svg">
 	 */
 	public void createSVGSVG() {
 		this.svg = new SVGSVG();
-		svg.setWidth(pdf2svgConverter.pageWidth);
-		svg.setHeight(pdf2svgConverter.pageHeight);
+		if (pdf2svgConverter != null) {
+			svg.setWidth(pdf2svgConverter.pageWidth);
+			svg.setHeight(pdf2svgConverter.pageHeight);
+		}
 		svg.setStroke("none");
 		svg.setStrokeWidth(0.0);
 		svg.addNamespaceDeclaration(PDF2SVGUtil.SVGX_PREFIX, PDF2SVGUtil.SVGX_NS);
@@ -1219,7 +1224,16 @@ xmlns="http://www.w3.org/2000/svg">
 	}
 
 	public SVGSVG getSVG() {
+		getOrCreateSVG();
 		return svg;
+	}
+
+	private void getOrCreateSVG() {
+		if (svg == null) {
+			System.out.print(" SVG ");
+//			LOG.warn("Creating new SVG - probably should have been done elsewhere");
+			createSVGSVG();
+		}
 	}
 
 //	@Override

@@ -751,4 +751,17 @@ and
 		return nonStandardFontFamily;
 	}
 
+	/**
+	removes any characters upto and including "+" ABCDEF+MyFont...
+	 * 
+	 * @param font
+	 * @return
+	 */
+	public static String stripPrefix(PDFont font) {
+		if (font == null) return null;
+		String s = font.toString();
+		int idx = s.indexOf("+");
+		return idx == -1 ? s : s.substring(idx + 1);
+	}
+
 }

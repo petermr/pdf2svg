@@ -35,7 +35,7 @@ import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageTree;
-import org.apache.pdfbox.rendering.PageDrawerParameters;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.xmlcml.font.CodePointSet;
 import org.xmlcml.font.FontFamilySet;
 import org.xmlcml.font.NonStandardFontManager;
@@ -48,6 +48,8 @@ import nu.xom.Serializer;
 
 /**
  * Simple app to read PDF documents based on PDFReader.java
+ * 
+ * THIS MAY BE REDUNDANT IN PDFBOX 2.0
  */
 public class PDF2SVGConverter extends PDFStreamEngine {
 
@@ -198,12 +200,16 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 		svgPageList = null;
 		
 //	1.8	page2svgConverter = new PDFPage2SVGConverter();
-		AMIPageDrawerParameters pageDrawerParameters = null;
-		page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
-		LOG.trace("PDF " + file.getCanonicalPath());
-		readDocument(file, useNonSeqParser, PDFpassword);
-		openAndProcess(file, (URL) null);
-		document.close();
+        PDDocument doc = PDDocument.load(file);
+        PDPageTree pdPageTree = doc.getPages();
+        int count = pdPageTree.getCount();
+        PDFRenderer renderer = new AMIPDFRenderer(doc);
+        for (int ipage = 0; ipage < count; ipage++) {
+        	PDPage page = pdPageTree.get(ipage);
+        	LOG.debug(page.getMatrix());
+			AMIPageDrawerParameters pageDrawerParameters = new AMIPageDrawerParameters(renderer, page);
+			page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
+        }
 	}
 
 	private void openAndProcess(File inputFile, URL url) {
