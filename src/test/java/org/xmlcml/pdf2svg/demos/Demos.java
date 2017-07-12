@@ -8,7 +8,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.Test;
-import org.xmlcml.pdf2svg.AMIGraphicsStreamEngine;
+import org.xmlcml.pdf2svg.AMIGraphics2SVG;
 import org.xmlcml.pdf2svg.Fixtures;
 import org.xmlcml.pdf2svg.PDF2SVGConverter;
 import org.xmlcml.pdf2svg.PDF2SVGTransformer;
@@ -50,15 +50,25 @@ public class Demos {
 	
 	@Test
     public void testPDFBox2_0Example() throws Exception {
-        File file = new File("src/main/resources/org/apache/pdfbox/examples/rendering/",
-                             "custom-render-demo.pdf");
+        File file = new File(Fixtures.EXAMPLES_DIR, "rendering/custom-render-demo.pdf");
 
         PDDocument doc = PDDocument.load(file);
         PDFRenderer renderer = new PDFRenderer(doc);
         PDPage page = doc.getPage(0);
-        AMIGraphicsStreamEngine engine = new PDFPage2SVGConverter(renderer, page);
+        AMIGraphics2SVG engine = new PDFPage2SVGConverter(new PDF2SVGTransformer(),renderer, page);
         engine.run();
         doc.close();
+    }
+    
+	@Test
+    public void testCustom() throws Exception {
+        File file = new File(Fixtures.EXAMPLES_DIR, "rendering/custom-render-demo.pdf");
+
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        // capture 
+        pdf2svgTransformer.convert(file);
+        
+        
     }
     
 	@Test

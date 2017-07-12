@@ -191,7 +191,7 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 	public void openPDFInputStream(InputStream is) throws IOException {
 		// this is wrong but should compile
 		AMIPageDrawerParameters pageDrawerParameters = null;
-		page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
+		page2svgConverter = new PDFPage2SVGConverter(new PDF2SVGTransformer(), pageDrawerParameters);
 		readDocument(is);
 		openAndProcess((File) null, (URL) null);
 	}
@@ -204,12 +204,14 @@ public class PDF2SVGConverter extends PDFStreamEngine {
         PDPageTree pdPageTree = doc.getPages();
         int count = pdPageTree.getCount();
         PDFRenderer renderer = new AMIPDFRenderer(doc);
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
         for (int ipage = 0; ipage < count; ipage++) {
         	PDPage page = pdPageTree.get(ipage);
         	LOG.debug(page.getMatrix());
 			AMIPageDrawerParameters pageDrawerParameters = new AMIPageDrawerParameters(renderer, page);
-			page2svgConverter = new PDFPage2SVGConverter(pageDrawerParameters);
+			page2svgConverter = new PDFPage2SVGConverter(pdf2svgTransformer, pageDrawerParameters);
         }
+		pdf2svgTransformer.writePage(new File("target/debug/pages.txt"));
 	}
 
 	private void openAndProcess(File inputFile, URL url) {

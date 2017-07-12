@@ -59,7 +59,6 @@ import java.awt.image.renderable.RenderableImage;
 import java.io.IOException;
 import java.text.AttributedCharacterIterator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.apache.log4j.Level;
@@ -67,7 +66,6 @@ import org.apache.log4j.Logger;
 import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.contentstream.PDFStreamEngine;
-import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -106,18 +104,20 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationMarkup;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 import org.xmlcml.euclid.Real;
 import org.xmlcml.euclid.Real2;
+import org.xmlcml.euclid.Real2Array;
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.Transform2;
 import org.xmlcml.euclid.Util;
+import org.xmlcml.graphics.svg.SVGG;
 import org.xmlcml.graphics.svg.SVGPath;
-
-import com.google.common.collect.HashMultiset;
-import com.google.common.collect.Multiset;
+import org.xmlcml.graphics.svg.SVGRect;
+import org.xmlcml.graphics.svg.SVGText;
+import org.xmlcml.graphics.svg.path.CubicPrimitive;
+import org.xmlcml.graphics.svg.path.MovePrimitive;
 
 /**
  * from PDFBox2.0
@@ -131,289 +131,19 @@ import com.google.common.collect.Multiset;
  * 
  * PMR: rename to AMIGraphicsStreamEngine
  */
-public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
+public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
 
     // NOTE: there are may more methods in PDFStreamEngine which can be overridden here too.
-	private static final Logger LOG = Logger.getLogger(AMIGraphicsStreamEngine.class);
+	private static final Logger LOG = Logger.getLogger(AMIGraphics2SVG.class);
 	static {
 		LOG.setLevel(Level.DEBUG);
 	}
 	private final static int NDEC = 2;
 
 	private String currentPathString;
-	private AMIFont amiFont;
+//	private AMIFont amiFont;
 	private SVGPath svgPath;
-	
-
-    /**
-     * Constructor.
-     *
-     *This one is called from PDFPage2SVGConverter(AMIPageDrawerParameters pageDrawerParameters)
-     * @param page PDF Page
-     */
-    protected AMIGraphicsStreamEngine(PDPage page) {
-        super(page);
-        System.out.println("************** " + page + " ************************");
-        this.renderer = null;
-    }
-
-    /**
-     * Constructor.
-     *
-     * @param parameters Parameters for page drawing.
-     * @throws IOException If there is an error loading properties from the file.
-     */
-    public AMIGraphicsStreamEngine(PageDrawerParameters parameters) throws IOException {
-        super(parameters.getPage());
-        LOG.debug("AMIGraphicsStreamEngine "+parameters);
-        this.renderer = null;
-    }
-
-
-    /**
-     * Runs the engine on the current page.
-     *
-     * @throws IOException If there is an IO error while drawing the page.
-     */
-    public void run() throws IOException {
-        processPage(getPage());
-
-        for (PDAnnotation annotation : getPage().getAnnotations()) {
-            showAnnotation(annotation);
-        }
-    }
-    
-
-    // NEW 
-//    @Override
-//    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) throws IOException
-//    {
-//        System.out.printf("appendRectangle %.2f %.2f, %.2f %.2f, %.2f %.2f, %.2f %.2f\n",
-//                p0.getX(), p0.getY(), p1.getX(), p1.getY(),
-//                p2.getX(), p2.getY(), p3.getX(), p3.getY());
-//    }
-
-//    @Override
-//    public void drawImage(PDImage pdImage) throws IOException
-//    {
-//        System.out.println("drawImage");
-//    }
-
-//    @Override
-//    public void clip(int windingRule) throws IOException
-//    {
-//        System.out.println("clip");
-//    }
-
-//    @Override
-//    public void moveTo(float x, float y) throws IOException
-//    {
-//        System.out.printf("moveTo %.2f %.2f\n", x, y);
-//    }
-
-//    @Override
-//    public void lineTo(float x, float y) throws IOException
-//    {
-//        System.out.printf("lineTo %.2f %.2f\n", x, y);
-//    }
-
-//    @Override
-//    public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) throws IOException
-//    {
-//        System.out.printf("curveTo %.2f %.2f, %.2f %.2f, %.2f %.2f\n", x1, y1, x2, y2, x3, y3);
-//    }
-
-//    @Override
-//    public Point2D getCurrentPoint() throws IOException
-//    {
-//        // if you want to build paths, you'll need to keep track of this like PageDrawer does
-//        return new Point2D.Float(0, 0);
-//    }
-
-//    @Override
-//    public void closePath() throws IOException
-//    {
-//        System.out.println("closePath");
-//    }
-
-//    @Override
-//    public void endPath() throws IOException
-//    {
-//        System.out.println("endPath");
-//    }
-
-//    @Override
-//    public void strokePath() throws IOException
-//    {
-//        System.out.println("strokePath");
-//    }
-
-//    @Override
-//    public void fillPath(int windingRule) throws IOException
-//    {
-//        System.out.println("fillPath");
-//    }
-//
-//    @Override
-//    public void fillAndStrokePath(int windingRule) throws IOException
-//    {
-//        System.out.println("fillAndStrokePath");
-//    }
-
-//    @Override
-//    public void shadingFill(COSName shadingName) throws IOException
-//    {
-//        System.out.println("shadingFill " + shadingName.toString());
-//    }
-
-    /**
-     * Overridden from PDFStreamEngine.
-     */
-    @Override
-    public void showTextString(byte[] string) throws IOException {
-//    	System.out.print("~"+new String(string)+"~");
-    	System.out.print(""+new String(string)+"");
-        super.showTextString(string);
-    }
-
-    /**
-     * Overridden from PDFStreamEngine.
-     */
-    @Override
-    public void showTextStrings(COSArray array) throws IOException {
-    	for (int i = 0; i < array.size(); i++) {
-    		COSBase base = array.get(i);
-    		String s = base.toString();
-    		if (base instanceof COSFloat) {
-    			s = String.valueOf(((COSFloat)base).doubleValue());
-    			s = "";
-    		} else if (base instanceof COSInteger) {
-        		s = String.valueOf(((COSInteger)base).intValue());
-        		s = "";
-    		} else if (base instanceof COSString) {
-        		s = String.valueOf(((COSString)base).getString());
-    		} else {
-    			throw new RuntimeException("Class "+base.getClass());
-//    			System.out.print("@>"+base+"<@");
-    		}
-    		System.out.print(""+s+"");
-    	}
-        super.showTextStrings(array);
-//        //System.out.println("\"");
-    }
-
-    /**
-     * Overridden from PDFStreamEngine.
-     * the displacement is the characterWidth I thnk - not sure of coords
-     */
-    @Override
-    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicodeChar,
-                             Vector displacement) throws IOException {
-        super.showGlyph(textRenderingMatrix, font, code, unicodeChar, displacement);
-    }
-    
-	private void draw(Shape s) {};
-	private boolean drawImage(Image img, AffineTransform xform, ImageObserver obs) {return true;};
-	private void drawImage(BufferedImage img, BufferedImageOp op, int x, int y) {};
-	private void drawRenderedImage(RenderedImage img, AffineTransform xform) {};
-	private void drawRenderableImage(RenderableImage img, AffineTransform xform) {};
-	private void drawString(String str, int x, int y) {};
-	private void drawString(String str, float x, float y) {};
-	private void drawString(AttributedCharacterIterator iterator, int x, int y) {};
-	private void drawString(AttributedCharacterIterator iterator, float x, float y) {};
-	private void drawGlyphVector(GlyphVector g, float x, float y) {
-    	LOG.debug("GlyphVector "+g);
-		Shape shape = g.getOutline();
-		AffineTransform at = new AffineTransform();
-		this.currentPathString = SVGPath.getPathAsDString(shape.getPathIterator(at));
-		svgPath = new SVGPath(this.currentPathString);
-	}
-	private void fill(Shape s) {};
-	private boolean hit(Rectangle rect, Shape s, boolean onStroke) {return true;};
-	private GraphicsConfiguration getDeviceConfiguration() {return null;};
-	private void setComposite(Composite comp) {};
-	private void setPaint(Paint paint) {};
-	private void setStroke(Stroke s) {};
-	private void setRenderingHint(Key hintKey, Object hintValue) {};
-	private Object getRenderingHint(Key hintKey) {return null;};
-	private void setRenderingHints(Map<?, ?> hints) {};
-	private void addRenderingHints(Map<?, ?> hints) {};
-	private RenderingHints getRenderingHints() {return null;};
-	private void translate(int x, int y) {};
-	private void translate(double tx, double ty) {};
-	private void rotate(double theta) {};
-	private void rotate(double theta, double x, double y) {};
-	private void scale(double sx, double sy) {};
-	private void shear(double shx, double shy) {};
-	private void transform(AffineTransform Tx) {};
-	private void setTransform(AffineTransform Tx) {};
-	private AffineTransform getTransform() {return null;};
-	private Paint getPaint() {return null;};
-	private Composite getComposite() {return null;};
-	private void setBackground(Color color) {};
-	private Color getBackground() {return null;};
-//	private Stroke getStroke() {return null;};
-	private void clip(Shape s) {};
-	private FontRenderContext getFontRenderContext() {return null;};
-	private Graphics create() {return null;};
-	private Color getColor() {return null;};
-	private void setColor(Color c) {};
-	private void setPaintMode() {};
-	private void setXORMode(Color c1) {};
-	private Font getFont() {return null;};
-	private void setFont(Font font) {};
-	private FontMetrics getFontMetrics(Font f) {return null;};
-	private Rectangle getClipBounds() {return null;};
-	private void clipRect(int x, int y, int width, int height) {};
-	private void setClip(int x, int y, int width, int height) {};
-	private Shape getClip() {return null;};
-	private void setClip(Shape clip) {};
-	private void copyArea(int x, int y, int width, int height, int dx, int dy) {};
-	private void drawLine(int x1, int y1, int x2, int y2) {};
-	private void fillRect(int x, int y, int width, int height) {};
-	private void clearRect(int x, int y, int width, int height) {};
-	private void drawRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {};
-	private void fillRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {};
-	private void drawOval(int x, int y, int width, int height) {};
-	private void fillOval(int x, int y, int width, int height) {};
-	private void drawArc(int x, int y, int width, int height, int startAngle, int arcAngle) {};
-	private void fillArc(int x, int y, int width, int height, int startAngle, int arcAngle) {};
-	private void drawPolyline(int[] xPoints, int[] yPoints, int nPoints) {};
-	private void drawPolygon(int[] xPoints, int[] yPoints, int nPoints) {};
-	private void fillPolygon(int[] xPoints, int[] yPoints, int nPoints) {};
-	private boolean drawImage(Image img, int x, int y, ImageObserver observer) {return true;};
-	private boolean drawImage(Image img, int x, int y, Color bgcolor, ImageObserver observer) {return true;};
-	private boolean drawImage(Image img, int x, int y, int width, int height, ImageObserver observer) {return true;};
-	private boolean drawImage(Image img, int x, int y, int width, int height, Color bgcolor, ImageObserver observer) {return true;};
-	private boolean drawImage(Image img, int dx1, int dy1, int dx2, int dy2,	int sx1, int sy1, int sx2, int sy2, ImageObserver observer) {return true;};
-	private boolean drawImage(Image img, int dx1, int dy1, int dx2, int dy2, int sx1, int sy1, int sx2, int sy2, Color bgcolor, ImageObserver observer) {return true;};
-	
-	private void dispose() {};
-
-	private String getCurrentPathString() {
-    	LOG.debug("GET CURRENT PATH STRING " + this.currentPathString);
-		return this.currentPathString;
-	}
-
-	private boolean reportUnusualTransforms(AffineTransform Tx) {
-		boolean unusual = false;
-		Transform2 t2 = new Transform2(Tx);
-		RealArray scales = t2.getScales();
-		double scalex = scales.get(0);
-		double scaley = scales.get(1);
-		double scaleRatio = scalex/scaley;
-		Real2 translate = t2.getTranslation();
-		// trap non-square or translated
-		if (!Real.isEqual(scaleRatio, 1.0, 0.3) 
-				|| !translate.isEqualTo(new Real2(0., 0.0), 0.001)) {
-//			System.out.printf("transform(Tx=%s)%n", t2.toString());
-			System.out.println("transform "+ new RealArray(t2.getMatrixAsArray()));
-			unusual = true;
-		}
-		return unusual;
-	}
-
-    // END OF PDFGraphics2D (developed for PDFBox 1.8)
+	protected PDF2SVGTransformer pdf2svgTransformer;
 	
 	// dump of PageDrawer in case there are useful routines
     // parent document renderer - note: this is needed for not-yet-implemented resource caching
@@ -444,8 +174,39 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
 
     // glyph caches
     private final Map<PDFont, GlyphCache> glyphCaches = new HashMap<PDFont, GlyphCache>();
-	private Multiset<String> codePointSet;
 
+	// probably need this (PMR)
+	private PDGraphicsState graphicsState;
+
+	protected PDRectangle mediaBox;
+
+    /**
+     * Constructor.
+     *
+     *This one is called from PDFPage2SVGConverter(AMIPageDrawerParameters pageDrawerParameters)
+     * @param page PDF Page
+     */
+    protected AMIGraphics2SVG(PDF2SVGTransformer pdf2svgTransformer, PDPage page) {
+        super(page);
+        System.out.println("************** " + page + " ************************");
+        this.renderer = null;
+        this.pdf2svgTransformer = pdf2svgTransformer;
+    }
+
+    /**
+     * Runs the engine on the current page.
+     *
+     * @throws IOException If there is an IO error while drawing the page.
+     */
+    public void run() throws IOException {
+    	mediaBox = getPage().getMediaBox();
+        processPage(getPage());
+
+        for (PDAnnotation annotation : getPage().getAnnotations()) {
+            showAnnotation(annotation);
+        }
+    }
+    
     /**
      * Returns the parent renderer.
      */
@@ -461,10 +222,100 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
     }
 
     /**
+     * Overridden from PDFStreamEngine.
+     */
+    @Override
+    public void showTextString(byte[] bytes) throws IOException {
+    	String text = new String(bytes);
+    	pdf2svgTransformer.debug(text);
+    	pdf2svgTransformer.addText(text);
+        super.showTextString(bytes);
+    }
+
+    /**
+     * Overridden from PDFStreamEngine.
+     */
+    @Override
+    public void showTextStrings(COSArray array) throws IOException {
+    	for (int i = 0; i < array.size(); i++) {
+    		COSBase base = array.get(i);
+    		String s = base.toString();
+    		if (base instanceof COSFloat) {
+    			s = String.valueOf(((COSFloat)base).doubleValue());
+    			s = "";
+    		} else if (base instanceof COSInteger) {
+        		s = String.valueOf(((COSInteger)base).intValue());
+        		s = "";
+    		} else if (base instanceof COSString) {
+        		s = String.valueOf(((COSString)base).getString());
+    		} else {
+    			throw new RuntimeException("Class "+base.getClass());
+    		}
+    		pdf2svgTransformer.debug(s);
+    		pdf2svgTransformer.addText(s);
+    	}
+        super.showTextStrings(array);
+    }
+
+    /**
+     * Overridden from PDFStreamEngine.
+     * the displacement is the characterWidth I thnk - not sure of coords
+     */
+    @Override
+    protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicodeChar,
+                             Vector displacement) throws IOException {
+        super.showGlyph(textRenderingMatrix, font, code, unicodeChar, displacement);
+        LOG.trace("trmat: "+textRenderingMatrix+"; font: "+font+"; code: "+code+"; inicode: "+unicodeChar+"; displacement: "+displacement);
+        SVGG g = new SVGG();
+        float[][] mat = textRenderingMatrix.getValues();
+        double[] array = new double[] {
+        		mat[0][0],
+        		mat[1][0],
+        		mat[2][0],
+        		mat[0][1],
+        		mat[1][1],
+        		mat[2][1],
+        		mat[0][2],
+        		mat[1][2],
+        		mat[2][2],
+        };
+        Transform2 t0 = new Transform2(array);
+        double fontSize = t0.getScales().get(0);
+        Transform2 t1 = invertYTransform2();
+        Transform2 t2 = t1.concatenate(t0);
+        RealArray xy = new RealArray(new double[]{0.0, 0.0, 1.0});
+        xy = t2.multiply(xy);
+        
+        SVGText text = new SVGText(new Real2(xy.get(0), xy.get(1)), unicodeChar);
+        text.setFontSize(fontSize);
+        text.setFill("black");
+        g.appendChild(text);
+        pdf2svgTransformer.append(g);
+    }
+    
+	/** where is this used?
+     * 
+     * @param g
+     * @param x
+     * @param y
+     */
+	private void drawGlyphVector(GlyphVector g, float x, float y) {
+		pdf2svgTransformer.debug("GlyphVector "+g);
+		Shape shape = g.getOutline();
+		AffineTransform at = new AffineTransform();
+		this.currentPathString = SVGPath.getPathAsDString(shape.getPathIterator(at));
+		SVGPath svgPath = new SVGPath(this.currentPathString);
+		pdf2svgTransformer.setCurrentPoint(new Real2(x, invertY(y)));
+		pdf2svgTransformer.append(svgPath);
+	}
+	
+    /**
      * Returns the current line path. This is reset to empty after each fill/stroke.
      */
     protected final GeneralPath getLinePath() {
-    	System.out.print(" GPath()");
+    	String linePathD = SVGPath.constructDString(linePath);
+    	pdf2svgTransformer.debug(" LINEPATH: "+linePathD);
+    	pdf2svgTransformer.clearPath();
 //    	LOG.debug("LINEPATH "+linePath);
         return linePath;
     }
@@ -490,6 +341,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
      * @throws IOException If there is an IO error while drawing the page.
      */
     public void drawPage(Graphics g, PDRectangle pageSize) throws IOException {
+    	LOG.debug("drawPage");
         graphics = (Graphics2D) g;
         xform = graphics.getTransform();
         this.pageSize = pageSize;
@@ -527,6 +379,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
      */
     void drawTilingPattern(Graphics2D g, PDTilingPattern pattern, PDColorSpace colorSpace,
                                   PDColor color, Matrix patternMatrix) throws IOException {
+    	LOG.debug("tiling pattern");
         Graphics2D oldGraphics = graphics;
         graphics = g;
 
@@ -555,6 +408,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
      * Returns an AWT paint for the given PDColor.
      */
     protected Paint getPaint(PDColor color) throws IOException {
+    	LOG.debug("paint");
         PDColorSpace colorSpace = color.getColorSpace();
         if (!(colorSpace instanceof PDPattern)) {
             float[] rgb = colorSpace.toRGB(color.getComponents());
@@ -596,6 +450,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
     // sets the clipping path using caching for performance, we track lastClip manually because
     // Graphics2D#getClip() returns a new object instead of the same one passed to setClip
     private void setClip() {
+    	LOG.debug("clip");
         Area clippingPath = getGraphicsState().getCurrentClippingPath();
         if (clippingPath != lastClip) {
         	if (graphics == null) {
@@ -609,19 +464,507 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
 
     @Override
     public void beginText() throws IOException {
-    	System.out.print(" BT ");
-//		LOG.debug("beginText");
+    	LOG.trace("BEGIN TEXT");
+    	pdf2svgTransformer.debug(" BT ");
+    	SVGG g = new SVGG();
+    	g.setClassName("beginText");
+		pdf2svgTransformer.append(g);
         setClip();
         beginTextClip();
     }
 
     @Override
     public void endText() throws IOException {
-    	System.out.print(" ET ");
-//		LOG.debug("endText");
+    	pdf2svgTransformer.debug(" ET ");
+    	SVGG g = new SVGG();
+    	g.setClassName("endText");
+		pdf2svgTransformer.append(g);
         endTextClip();
     }
     
+    @Override
+    protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
+                                 Vector displacement) throws IOException {
+    	String fontName = AMIFont.stripPrefix(font);
+    	String codePointS = fontName+";"+code+";"+unicode+";"+displacement;
+    	pdf2svgTransformer.addCodePoint(codePointS);
+    	
+        AffineTransform at = textRenderingMatrix.createAffineTransform();
+        at.concatenate(font.getFontMatrix().createAffineTransform());
+
+        // create cache if it does not exist
+
+        // don't understand this yet - try skipping type1 fonts
+        if (font instanceof PDType1Font || font instanceof PDType1CFont) {
+        	// skip
+        } else {
+        	pdf2svgTransformer.debug(" VF ");
+        	// outline font?
+	        PDVectorFont vectorFont = ((PDVectorFont)font);
+	        GlyphCache cache = glyphCaches.get(font);
+	        if (cache == null) {
+	            cache = new GlyphCache(vectorFont);
+	            glyphCaches.put(font, cache);
+	        }
+	        
+	        GeneralPath path = cache.getPathForCharacterCode(code);
+	        drawGlyph(path, font, code, displacement, at);
+        }
+    }
+    
+    @Override
+    public void appendRectangle(Point2D pp0, Point2D pp1, Point2D pp2, Point2D pp3) {
+    	Point2D p0 = invertY(pp0);
+    	Point2D p1 = invertY(pp1);
+    	Point2D p2 = invertY(pp2);
+    	Point2D p3 = invertY(pp3);
+    	pdf2svgTransformer.debug(" R[("+Util.format(p0.getX(),NDEC)+","+Util.format(p0.getY(),NDEC)+"),("+Util.format(p2.getX(),NDEC)+","+Util.format(p2.getY(),NDEC)+")] ");
+    	pdf2svgTransformer.append(new SVGRect(p0, p2));
+//		LOG.debug("appendRectangle "+p0);
+        // to ensure that the path is created in the right direction, we have to create
+        // it by combining single lines instead of creating a simple rectangle
+        linePath.moveTo((float) p0.getX(), (float) p0.getY());
+        linePath.lineTo((float) p1.getX(), (float) p1.getY());
+        linePath.lineTo((float) p2.getX(), (float) p2.getY());
+        linePath.lineTo((float) p3.getX(), (float) p3.getY());
+
+        // close the subpath instead of adding the last line so that a possible set line
+        // cap style isn't taken into account at the "beginning" of the rectangle
+        linePath.closePath();
+        pdf2svgTransformer.setCurrentPoint(new Real2(p0.getX(),p0.getY()));
+    }
+
+    @Override
+    public void strokePath() throws IOException {
+		LOG.debug("strokePath "+linePath);
+		if (graphics != null) {
+	        graphics.setComposite(getGraphicsState().getStrokingJavaComposite());
+	        graphics.setPaint(getStrokingPaint());
+	        graphics.setStroke(getStroke());
+		} else {
+			LOG.debug("NULL Graphics");
+		}
+        setClip();
+        //TODO bbox of shading pattern should be used here? (see fillPath)
+        graphics.draw(linePath);
+        linePath.reset();
+    }
+
+    @Override
+    public void fillPath(int windingRule) throws IOException {
+		LOG.debug("FILLPATH "+windingRule);
+		if (graphics != null) {
+	        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+	        graphics.setPaint(getNonStrokingPaint());
+		} else {
+			LOG.debug("NULL Graphics");
+		}
+        setClip();
+        linePath.setWindingRule(windingRule);
+
+        // disable anti-aliasing for rectangular paths, this is a workaround to avoid small stripes
+        // which occur when solid fills are used to simulate piecewise gradients, see PDFBOX-2302
+        // note that we ignore paths with a width/height under 1 as these are fills used as strokes,
+        // see PDFBOX-1658 for an example
+        Rectangle2D bounds = linePath.getBounds2D();
+        boolean noAntiAlias = isRectangular(linePath) && bounds.getWidth() > 1 &&
+                                                         bounds.getHeight() > 1;
+        if (noAntiAlias) {
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                                      RenderingHints.VALUE_ANTIALIAS_OFF);
+        }
+
+        if (graphics == null) {
+        	LOG.debug("NULL GRAPHICS");
+        } else if (!(graphics.getPaint() instanceof Color)) {
+            // apply clip to path to avoid oversized device bounds in shading contexts (PDFBOX-2901)
+            Area area = new Area(linePath);
+            area.intersect(new Area(graphics.getClip()));
+            intersectShadingBBox(getGraphicsState().getNonStrokingColor(), area);
+            graphics.fill(area);
+        }
+        else {
+            graphics.fill(linePath);
+        }
+        
+        linePath.reset();
+
+        if (noAntiAlias) {
+            // JDK 1.7 has a bug where rendering hints are reset by the above call to
+            // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
+            setRenderingHints();
+        }
+    }
+
+    /**
+     * Fills and then strokes the path.
+     *
+     * @param windingRule The winding rule this path will use.
+     * @throws IOException If there is an IO error while filling the path.
+     */
+    @Override
+    public void fillAndStrokePath(int windingRule) throws IOException {
+		LOG.debug("FILLANDSTROKEPATH "+windingRule);
+        // TODO can we avoid cloning the path?
+        GeneralPath path = (GeneralPath)linePath.clone();
+        fillPath(windingRule);
+        linePath = path;
+        strokePath();
+    }
+
+    @Override
+    public void clip(int windingRule) {
+        // the clipping path will not be updated until the succeeding painting operator is called
+        clipWindingRule = windingRule;
+    }
+
+    @Override
+    public void moveTo(float x, float yy) {
+    	double y = invertY(yy);
+    	LOG.debug("MOVE "+x+","+y);
+    	pdf2svgTransformer.debug(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+        linePath.moveTo(x, y);
+        pdf2svgTransformer.moveTo(new Real2(x, y));
+    }
+
+    @Override
+    public void lineTo(float x, float yy) {
+    	double y = invertY(yy);
+    	Real2 point0 = Real2.createReal2(getCurrentPoint());
+    	LOG.trace("LINE "+x+","+y);
+    	pdf2svgTransformer.debug(" L"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+        linePath.lineTo(x, y);
+        Real2 point = new Real2(x, y);
+        pdf2svgTransformer.moveTo(point0);
+        pdf2svgTransformer.lineTo(point);
+    }
+
+    @Override
+    public void curveTo(float x1, float yy1, float x2, float yy2, float x3, float yy3) {
+    	double y1 = invertY(yy1);
+    	double y2 = invertY(yy2);
+    	double y3 = invertY(yy3);
+    	Real2 point0 = Real2.createReal2(getCurrentPoint());
+    	LOG.debug("CURVE "+x1+","+y1);
+    	MovePrimitive move = new MovePrimitive(point0);
+    	pdf2svgTransformer.addPrimitive(move);
+    	pdf2svgTransformer.debug(" C"+Util.format(x1,NDEC)+","+Util.format(y1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(y2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(y3,NDEC)+" ");
+        linePath.curveTo(x1, y1, x2, y2, x3, y3);
+        Real2Array coordArray = new Real2Array();
+        
+        coordArray.add(new Real2(x1, y1));
+        coordArray.add(new Real2(x2, y2));
+        Real2 point = new Real2(x3, y3);
+        coordArray.add(point);
+        CubicPrimitive cubic = new CubicPrimitive(coordArray);
+        pdf2svgTransformer.addPrimitive(cubic);
+        pdf2svgTransformer.moveTo(point);
+        
+    }
+
+    @Override
+    public Point2D getCurrentPoint() {
+    	LOG.debug("CURRENT: "+linePath.getCurrentPoint());
+    	Point2D point = linePath.getCurrentPoint();
+    	pdf2svgTransformer.debug(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
+    	pdf2svgTransformer.setCurrentPoint(new Real2(point.getX(), point.getY()));
+        return linePath.getCurrentPoint();
+    }
+
+    @Override
+    public void closePath() {
+    	pdf2svgTransformer.debug(" CL ");
+        linePath.closePath();
+    }
+
+    @Override
+    public void endPath() {
+    	pdf2svgTransformer.debug(" EP ");
+        if (clipWindingRule != -1) {
+            linePath.setWindingRule(clipWindingRule);
+            getGraphicsState().intersectClippingPath(linePath);
+            clipWindingRule = -1;
+        }
+        linePath.reset();
+    	SVGG g = new SVGG();
+    	g.setClassName("endPath");
+		pdf2svgTransformer.append(g);
+
+    }
+    
+    @Override
+    public void drawImage(PDImage pdImage) throws IOException {
+        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
+        AffineTransform at = ctm.createAffineTransform();
+
+        if (!pdImage.getInterpolate()) {
+            boolean isScaledUp = pdImage.getWidth() < Math.round(at.getScaleX()) ||
+                                 pdImage.getHeight() < Math.round(at.getScaleY());
+
+            // if the image is scaled down, we use smooth interpolation, eg PDFBOX-2364
+            // only when scaled up do we use nearest neighbour, eg PDFBOX-2302 / mori-cvpr01.pdf
+            // stencils are excluded from this rule (see survey.pdf)
+            if (isScaledUp || pdImage.isStencil()) {
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            }
+        }
+
+        if (pdImage.isStencil()) {
+            if (getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern) {
+                // The earlier code for stencils (see "else") doesn't work with patterns because the
+                // CTM is not taken into consideration.
+                // this code is based on the fact that it is easily possible to draw the mask and 
+                // the paint at the correct place with the existing code, but not in one step.
+                // Thus what we do is to draw both in separate images, then combine the two and draw
+                // the result. 
+                // Note that the device scale is not used. In theory, some patterns can get better
+                // at higher resolutions but the stencil would become more and more "blocky".
+                // If anybody wants to do this, have a look at the code in showTransparencyGroup().
+
+                // draw the paint
+                Paint paint = getNonStrokingPaint();
+                Rectangle2D unitRect = new Rectangle2D.Float(0, 0, 1, 1);
+                Rectangle2D bounds = at.createTransformedShape(unitRect).getBounds2D();
+                BufferedImage renderedPaint = 
+                        new BufferedImage((int) Math.ceil(bounds.getWidth()), 
+                                          (int) Math.ceil(bounds.getHeight()), 
+                                           BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = (Graphics2D) renderedPaint.getGraphics();
+                g.translate(-bounds.getMinX(), -bounds.getMinY());
+                g.setPaint(paint);
+                g.fill(bounds);
+                g.dispose();
+
+                // draw the mask
+                BufferedImage mask = pdImage.getImage();
+                BufferedImage renderedMask = new BufferedImage((int) Math.ceil(bounds.getWidth()), 
+                                                               (int) Math.ceil(bounds.getHeight()), 
+                                                               BufferedImage.TYPE_INT_RGB);
+                g = (Graphics2D) renderedMask.getGraphics();
+                g.translate(-bounds.getMinX(), -bounds.getMinY());
+                AffineTransform imageTransform = new AffineTransform(at);
+                imageTransform.scale(1.0 / mask.getWidth(), -1.0 / mask.getHeight());
+                imageTransform.translate(0, -mask.getHeight());
+                g.drawImage(mask, imageTransform, null);
+                g.dispose();
+
+                // apply the mask
+                final int[] transparent = new int[4];
+                int[] alphaPixel = null;
+                WritableRaster raster = renderedPaint.getRaster();
+                WritableRaster alpha = renderedMask.getRaster();
+                int h = renderedMask.getRaster().getHeight();
+                int w = renderedMask.getRaster().getWidth();
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        alphaPixel = alpha.getPixel(x, y, alphaPixel);
+                        if (alphaPixel[0] == 255) {
+                            raster.setPixel(x, y, transparent);
+                        }
+                    }
+                }
+                
+                // draw the image
+                setClip();
+                graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+                graphics.drawImage(renderedPaint, 
+                        AffineTransform.getTranslateInstance(bounds.getMinX(), bounds.getMinY()), 
+                        null);
+            }
+            else {
+                // fill the image with stenciled paint
+                BufferedImage image = pdImage.getStencilImage(getNonStrokingPaint());
+
+                // draw the image
+                drawBufferedImage(image, at);
+            }
+        }
+        else {
+            // draw the image
+            drawBufferedImage(pdImage.getImage(), at);
+        }
+
+        if (!pdImage.getInterpolate()) {
+            // JDK 1.7 has a bug where rendering hints are reset by the above call to
+            // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
+            setRenderingHints();
+        }
+    }
+
+
+    @Override
+    public void shadingFill(COSName shadingName) throws IOException {
+        PDShading shading = getResources().getShading(shadingName);
+        if (shading == null) {
+            LOG.error("shading " + shadingName + " does not exist in resources dictionary");
+            return;
+        }
+        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
+        Paint paint = shading.toPaint(ctm);
+        paint = applySoftMaskToPaint(paint, getGraphicsState().getSoftMask());
+
+        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+        graphics.setPaint(paint);
+        graphics.setClip(null);
+        lastClip = null;
+
+        // get the transformed BBox and intersect with current clipping path
+        // need to do it here and not in shading getRaster() because it may have been rotated
+        PDRectangle bbox = shading.getBBox();
+        if (bbox != null) {
+            Area bboxArea = new Area(bbox.transform(ctm));
+            bboxArea.intersect(getGraphicsState().getCurrentClippingPath());
+            graphics.fill(bboxArea);
+        }
+        else {
+            graphics.fill(getGraphicsState().getCurrentClippingPath());
+        }
+    }
+
+    @Override
+    public void showAnnotation(PDAnnotation annotation) throws IOException {
+    	if (graphics == null) return;
+        lastClip = null;
+        //TODO support more annotation flags (Invisible, NoZoom, NoRotate)
+        // Example for NoZoom can be found in p5 of PDFBOX-2348
+        int deviceType = graphics.getDeviceConfiguration().getDevice().getType();
+        if (deviceType == GraphicsDevice.TYPE_PRINTER && !annotation.isPrinted()) {
+            return;
+        }
+        if (deviceType == GraphicsDevice.TYPE_RASTER_SCREEN && annotation.isNoView()) {
+            return;
+        }
+        if (annotation.isHidden()) {
+            return;
+        }
+        super.showAnnotation(annotation);
+
+        if (annotation.getAppearance() == null) {
+            if (annotation instanceof PDAnnotationLink) {
+                drawAnnotationLinkBorder((PDAnnotationLink) annotation);
+            }
+
+            if (annotation instanceof PDAnnotationMarkup && annotation.getSubtype().equals(PDAnnotationMarkup.SUB_TYPE_INK)) {
+                drawAnnotationInk((PDAnnotationMarkup) annotation);
+            }
+        }
+    }
+
+    @Override
+    protected void processSoftMask(PDTransparencyGroup group) throws IOException {
+    	super.processSoftMask(group);
+    	LOG.debug("***processSoftMask "+group);
+    }
+    
+    @Override
+    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
+    	super.processTransparencyGroup(group);
+    	LOG.debug("****processTransparencyGroup "+group);
+    }
+    
+    @Override
+    protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) throws IOException {
+    	super.processType3Stream(charProc, textRenderingMatrix);
+    	LOG.debug("****processType3Stream "+charProc+"; "+textRenderingMatrix);
+    }
+    
+    @Override
+    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
+    	super.processAnnotation(annotation, appearance);
+    	LOG.debug("****processAnnotation "+annotation+"; "+appearance);
+    }
+
+    @Override
+    public PDAppearanceStream getAppearance(PDAnnotation annotation) {
+    	LOG.debug("****getAppearance "+annotation);
+    	return super.getAppearance(annotation);
+    }
+    
+    @Override
+    protected void processChildStream(PDContentStream contentStream, PDPage page) throws IOException {
+    	LOG.debug("****processChildStream "+contentStream+"; "+page);
+    	super.processChildStream(contentStream, page);
+    }
+
+    @Override
+    //probably not to be subclassed
+    protected void applyTextAdjustment(float tx, float ty) throws IOException {
+//    	LOG.trace("****textAdjustment "+tx+";"+ty);
+    	super.applyTextAdjustment(tx, ty);
+    	pdf2svgTransformer.setCurrentPoint(new Real2(tx, ty)); // maybe
+    }
+
+    @SuppressWarnings("deprecation")
+	protected void showText(byte[] string) throws IOException {
+    	pdf2svgTransformer.debug(""+new String(string)+"");
+    	pdf2svgTransformer.addText(""+new String(string)+"");
+    	super.showText(string);
+    }
+    
+    @Override
+    protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
+            String unicode, Vector displacement) throws IOException {
+    	pdf2svgTransformer.debug(" ****showType3Glyph**** ");
+    	super.showType3Glyph(textRenderingMatrix, font, code, unicode, displacement);
+    }
+
+    @Override
+    public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
+    	LOG.debug("PDTRANSP");
+        TransparencyGroup group =
+                new TransparencyGroup(form, false, getGraphicsState().getCurrentTransformationMatrix(), null);
+        BufferedImage image = group.getImage();
+        if (image == null) {
+            // image is empty, don't bother
+            return;
+        }
+
+        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
+        setClip();
+
+        // both the DPI xform and the CTM were already applied to the group, so all we do
+        // here is draw it directly onto the Graphics2D device at the appropriate position
+        PDRectangle bbox = group.getBBox();
+        AffineTransform prev = graphics.getTransform();
+
+        Matrix m = new Matrix(xform);
+        float xScale = Math.abs(m.getScalingFactorX());
+        float yScale = Math.abs(m.getScalingFactorY());
+        
+        // adjust the initial translation (includes the translation used to "help" the rotation)
+        graphics.setTransform(AffineTransform.getTranslateInstance(xform.getTranslateX(), xform.getTranslateY()));
+
+        graphics.rotate(Math.toRadians(pageRotation));
+
+        // adjust bbox (x,y) position at the initial scale + cropbox
+        float x = bbox.getLowerLeftX() - pageSize.getLowerLeftX();
+        float y = pageSize.getUpperRightY() - bbox.getUpperRightY();
+        graphics.translate(x * xScale, y * yScale);
+
+        if (flipTG) {
+            graphics.translate(0, image.getHeight());
+            graphics.scale(1, -1);
+        }
+
+        PDSoftMask softMask = getGraphicsState().getSoftMask();
+        if (softMask != null) {
+            Paint awtPaint = new TexturePaint(image,
+                    new Rectangle2D.Float(0, 0, image.getWidth(), image.getHeight()));
+            awtPaint = applySoftMaskToPaint(awtPaint, softMask);
+            graphics.setPaint(awtPaint);
+            graphics.fill(
+                    new Rectangle2D.Float(0, 0, bbox.getWidth() * xScale, bbox.getHeight() * yScale));
+        }
+        else {
+            graphics.drawImage(image, null, null);
+        }
+
+        graphics.setTransform(prev);
+    }
+
+    // ===========================================
+
     /**
      * Begin buffering the text clipping path, if any.
      */
@@ -648,43 +991,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
         }
     }
 
-    @Override
-    protected void showFontGlyph(Matrix textRenderingMatrix, PDFont font, int code, String unicode,
-                                 Vector displacement) throws IOException {
-    	String fontName = AMIFont.stripPrefix(font);
-    	String codePointS = fontName+";"+code+";"+unicode+";"+displacement;
-    	ensureCodePointSet();
-    	codePointSet.add(codePointS);
-    	
-        AffineTransform at = textRenderingMatrix.createAffineTransform();
-        at.concatenate(font.getFontMatrix().createAffineTransform());
-
-        // create cache if it does not exist
-
-        // don't understand this yet - try skipping type1 fonts
-        if (font instanceof PDType1Font || font instanceof PDType1CFont) {
-        	// skip
-        } else {
-        	LOG.trace("Found vector font!!");
-        	// outline font?
-	        PDVectorFont vectorFont = ((PDVectorFont)font);
-	        GlyphCache cache = glyphCaches.get(font);
-	        if (cache == null) {
-	            cache = new GlyphCache(vectorFont);
-	            glyphCaches.put(font, cache);
-	        }
-	        
-	        GeneralPath path = cache.getPathForCharacterCode(code);
-	        drawGlyph(path, font, code, displacement, at);
-        }
-    }
-
-	private void ensureCodePointSet() {
-		if (codePointSet == null) {
-	    	codePointSet = HashMultiset.create();
-    	}
-	}
-
     /**
      * Renders a glyph.
      * 
@@ -697,6 +1003,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
      */
     private void drawGlyph(GeneralPath path, PDFont font, int code, Vector displacement, AffineTransform at) throws IOException {
         PDGraphicsState state = getGraphicsState();
+        LOG.trace("DRAW GLYPH "+code);
         RenderingMode renderingMode = state.getTextState().getRenderingMode();
         
         if (path != null) {
@@ -716,6 +1023,7 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
             if (graphics == null) {
             	LOG.trace("Null graphics");
             } else {
+            	LOG.debug("GRAPHICS");
 	            if (renderingMode.isFill()) {
 	                graphics.setComposite(state.getNonStrokingJavaComposite());
 	                graphics.setPaint(getNonStrokingPaint());
@@ -738,22 +1046,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
         }
     }
     
-    @Override
-    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) {
-    	System.out.print(" R[("+Util.format(p0.getX(),NDEC)+","+Util.format(p0.getY(),NDEC)+"),("+Util.format(p2.getX(),NDEC)+","+Util.format(p2.getY(),NDEC)+")] ");
-//		LOG.debug("appendRectangle "+p0);
-        // to ensure that the path is created in the right direction, we have to create
-        // it by combining single lines instead of creating a simple rectangle
-        linePath.moveTo((float) p0.getX(), (float) p0.getY());
-        linePath.lineTo((float) p1.getX(), (float) p1.getY());
-        linePath.lineTo((float) p2.getX(), (float) p2.getY());
-        linePath.lineTo((float) p3.getX(), (float) p3.getY());
-
-        // close the subpath instead of adding the last line so that a possible set line
-        // cap style isn't taken into account at the "beginning" of the rectangle
-        linePath.closePath();
-    }
-
     //TODO: move soft mask apply to getPaint()?
     private Paint applySoftMaskToPaint(Paint parentPaint, PDSoftMask softMask) throws IOException {
         if (softMask == null || softMask.getGroup() == null) {
@@ -905,68 +1197,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
                                state.getMiterLimit(), dashArray, phaseStart);
     }
 
-    @Override
-    public void strokePath() throws IOException {
-		LOG.debug("strokePath "+linePath);
-		if (graphics != null) {
-	        graphics.setComposite(getGraphicsState().getStrokingJavaComposite());
-	        graphics.setPaint(getStrokingPaint());
-	        graphics.setStroke(getStroke());
-		} else {
-			LOG.debug("NULL Graphics");
-		}
-        setClip();
-        //TODO bbox of shading pattern should be used here? (see fillPath)
-        graphics.draw(linePath);
-        linePath.reset();
-    }
-
-    @Override
-    public void fillPath(int windingRule) throws IOException {
-		LOG.debug("FILLPATH "+windingRule);
-		if (graphics != null) {
-	        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
-	        graphics.setPaint(getNonStrokingPaint());
-		} else {
-			LOG.debug("NULL Graphics");
-		}
-        setClip();
-        linePath.setWindingRule(windingRule);
-
-        // disable anti-aliasing for rectangular paths, this is a workaround to avoid small stripes
-        // which occur when solid fills are used to simulate piecewise gradients, see PDFBOX-2302
-        // note that we ignore paths with a width/height under 1 as these are fills used as strokes,
-        // see PDFBOX-1658 for an example
-        Rectangle2D bounds = linePath.getBounds2D();
-        boolean noAntiAlias = isRectangular(linePath) && bounds.getWidth() > 1 &&
-                                                         bounds.getHeight() > 1;
-        if (noAntiAlias) {
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                                      RenderingHints.VALUE_ANTIALIAS_OFF);
-        }
-
-        if (graphics == null) {
-        	LOG.debug("NULL GRAPHICS");
-        } else if (!(graphics.getPaint() instanceof Color)) {
-            // apply clip to path to avoid oversized device bounds in shading contexts (PDFBOX-2901)
-            Area area = new Area(linePath);
-            area.intersect(new Area(graphics.getClip()));
-            intersectShadingBBox(getGraphicsState().getNonStrokingColor(), area);
-            graphics.fill(area);
-        }
-        else {
-            graphics.fill(linePath);
-        }
-        
-        linePath.reset();
-
-        if (noAntiAlias) {
-            // JDK 1.7 has a bug where rendering hints are reset by the above call to
-            // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
-            setRenderingHints();
-        }
-    }
-
     // checks whether this is a shading pattern and if yes,
     // get the transformed BBox and intersect with current paint area
     // need to do it here and not in shading getRaster() because it may have been rotated
@@ -1033,177 +1263,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
                    ys[0] == ys[1] || ys[0] == ys[3];
         }
         return false;
-    }
-
-    /**
-     * Fills and then strokes the path.
-     *
-     * @param windingRule The winding rule this path will use.
-     * @throws IOException If there is an IO error while filling the path.
-     */
-    @Override
-    public void fillAndStrokePath(int windingRule) throws IOException {
-		LOG.debug("FILLANDSTROKEPATH "+windingRule);
-        // TODO can we avoid cloning the path?
-        GeneralPath path = (GeneralPath)linePath.clone();
-        fillPath(windingRule);
-        linePath = path;
-        strokePath();
-    }
-
-    @Override
-    public void clip(int windingRule) {
-//		LOG.debug("CLIP "+windingRule);
-        // the clipping path will not be updated until the succeeding painting operator is called
-        clipWindingRule = windingRule;
-    }
-
-    @Override
-    public void moveTo(float x, float y) {
-    	System.out.print(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
-//		LOG.debug("MOVETO " + x + "; " + y);
-        linePath.moveTo(x, y);
-    }
-
-    @Override
-    public void lineTo(float x, float y) {
-    	System.out.print(" L"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
-//		LOG.debug("LINETO " + x + "; " + y);
-        linePath.lineTo(x, y);
-    }
-
-    @Override
-    public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) {
-    	System.out.print(" C"+Util.format(x1,NDEC)+","+Util.format(y1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(y2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(y3,NDEC)+" ");
-//		LOG.debug("CURVETO " + x1 + "; " + y3);
-        linePath.curveTo(x1, y1, x2, y2, x3, y3);
-    }
-
-    @Override
-    public Point2D getCurrentPoint() {
-    	Point2D point = linePath.getCurrentPoint();
-    	System.out.print(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
-//		LOG.debug("GET CURRENTPOINT "+linePath.getCurrentPoint());
-        return linePath.getCurrentPoint();
-    }
-
-    @Override
-    public void closePath() {
-    	System.out.print(" CL ");
-//		LOG.debug("CLOSE PATH "+linePath);
-        linePath.closePath();
-    }
-
-    @Override
-    public void endPath() {
-    	System.out.print(" EP ");
-//		LOG.debug("END PATH "+linePath);
-        if (clipWindingRule != -1) {
-            linePath.setWindingRule(clipWindingRule);
-            getGraphicsState().intersectClippingPath(linePath);
-            clipWindingRule = -1;
-        }
-        linePath.reset();
-    }
-    
-    @Override
-    public void drawImage(PDImage pdImage) throws IOException {
-        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
-        AffineTransform at = ctm.createAffineTransform();
-
-        if (!pdImage.getInterpolate()) {
-            boolean isScaledUp = pdImage.getWidth() < Math.round(at.getScaleX()) ||
-                                 pdImage.getHeight() < Math.round(at.getScaleY());
-
-            // if the image is scaled down, we use smooth interpolation, eg PDFBOX-2364
-            // only when scaled up do we use nearest neighbour, eg PDFBOX-2302 / mori-cvpr01.pdf
-            // stencils are excluded from this rule (see survey.pdf)
-            if (isScaledUp || pdImage.isStencil()) {
-                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                        RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-            }
-        }
-
-        if (pdImage.isStencil()) {
-            if (getGraphicsState().getNonStrokingColor().getColorSpace() instanceof PDPattern) {
-                // The earlier code for stencils (see "else") doesn't work with patterns because the
-                // CTM is not taken into consideration.
-                // this code is based on the fact that it is easily possible to draw the mask and 
-                // the paint at the correct place with the existing code, but not in one step.
-                // Thus what we do is to draw both in separate images, then combine the two and draw
-                // the result. 
-                // Note that the device scale is not used. In theory, some patterns can get better
-                // at higher resolutions but the stencil would become more and more "blocky".
-                // If anybody wants to do this, have a look at the code in showTransparencyGroup().
-
-                // draw the paint
-                Paint paint = getNonStrokingPaint();
-                Rectangle2D unitRect = new Rectangle2D.Float(0, 0, 1, 1);
-                Rectangle2D bounds = at.createTransformedShape(unitRect).getBounds2D();
-                BufferedImage renderedPaint = 
-                        new BufferedImage((int) Math.ceil(bounds.getWidth()), 
-                                          (int) Math.ceil(bounds.getHeight()), 
-                                           BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = (Graphics2D) renderedPaint.getGraphics();
-                g.translate(-bounds.getMinX(), -bounds.getMinY());
-                g.setPaint(paint);
-                g.fill(bounds);
-                g.dispose();
-
-                // draw the mask
-                BufferedImage mask = pdImage.getImage();
-                BufferedImage renderedMask = new BufferedImage((int) Math.ceil(bounds.getWidth()), 
-                                                               (int) Math.ceil(bounds.getHeight()), 
-                                                               BufferedImage.TYPE_INT_RGB);
-                g = (Graphics2D) renderedMask.getGraphics();
-                g.translate(-bounds.getMinX(), -bounds.getMinY());
-                AffineTransform imageTransform = new AffineTransform(at);
-                imageTransform.scale(1.0 / mask.getWidth(), -1.0 / mask.getHeight());
-                imageTransform.translate(0, -mask.getHeight());
-                g.drawImage(mask, imageTransform, null);
-                g.dispose();
-
-                // apply the mask
-                final int[] transparent = new int[4];
-                int[] alphaPixel = null;
-                WritableRaster raster = renderedPaint.getRaster();
-                WritableRaster alpha = renderedMask.getRaster();
-                int h = renderedMask.getRaster().getHeight();
-                int w = renderedMask.getRaster().getWidth();
-                for (int y = 0; y < h; y++) {
-                    for (int x = 0; x < w; x++) {
-                        alphaPixel = alpha.getPixel(x, y, alphaPixel);
-                        if (alphaPixel[0] == 255) {
-                            raster.setPixel(x, y, transparent);
-                        }
-                    }
-                }
-                
-                // draw the image
-                setClip();
-                graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
-                graphics.drawImage(renderedPaint, 
-                        AffineTransform.getTranslateInstance(bounds.getMinX(), bounds.getMinY()), 
-                        null);
-            }
-            else {
-                // fill the image with stenciled paint
-                BufferedImage image = pdImage.getStencilImage(getNonStrokingPaint());
-
-                // draw the image
-                drawBufferedImage(image, at);
-            }
-        }
-        else {
-            // draw the image
-            drawBufferedImage(pdImage.getImage(), at);
-        }
-
-        if (!pdImage.getInterpolate()) {
-            // JDK 1.7 has a bug where rendering hints are reset by the above call to
-            // the setRenderingHint method, so we re-set all hints, see PDFBOX-2302
-            setRenderingHints();
-        }
     }
 
     private void drawBufferedImage(BufferedImage image, AffineTransform at) throws IOException {
@@ -1308,63 +1367,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
         return bim;
     }
 
-    @Override
-    public void shadingFill(COSName shadingName) throws IOException {
-        PDShading shading = getResources().getShading(shadingName);
-        if (shading == null) {
-            LOG.error("shading " + shadingName + " does not exist in resources dictionary");
-            return;
-        }
-        Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
-        Paint paint = shading.toPaint(ctm);
-        paint = applySoftMaskToPaint(paint, getGraphicsState().getSoftMask());
-
-        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
-        graphics.setPaint(paint);
-        graphics.setClip(null);
-        lastClip = null;
-
-        // get the transformed BBox and intersect with current clipping path
-        // need to do it here and not in shading getRaster() because it may have been rotated
-        PDRectangle bbox = shading.getBBox();
-        if (bbox != null) {
-            Area bboxArea = new Area(bbox.transform(ctm));
-            bboxArea.intersect(getGraphicsState().getCurrentClippingPath());
-            graphics.fill(bboxArea);
-        }
-        else {
-            graphics.fill(getGraphicsState().getCurrentClippingPath());
-        }
-    }
-
-    @Override
-    public void showAnnotation(PDAnnotation annotation) throws IOException {
-    	if (graphics == null) return;
-        lastClip = null;
-        //TODO support more annotation flags (Invisible, NoZoom, NoRotate)
-        // Example for NoZoom can be found in p5 of PDFBOX-2348
-        int deviceType = graphics.getDeviceConfiguration().getDevice().getType();
-        if (deviceType == GraphicsDevice.TYPE_PRINTER && !annotation.isPrinted()) {
-            return;
-        }
-        if (deviceType == GraphicsDevice.TYPE_RASTER_SCREEN && annotation.isNoView()) {
-            return;
-        }
-        if (annotation.isHidden()) {
-            return;
-        }
-        super.showAnnotation(annotation);
-
-        if (annotation.getAppearance() == null) {
-            if (annotation instanceof PDAnnotationLink) {
-                drawAnnotationLinkBorder((PDAnnotationLink) annotation);
-            }
-
-            if (annotation instanceof PDAnnotationMarkup && annotation.getSubtype().equals(PDAnnotationMarkup.SUB_TYPE_INK)) {
-                drawAnnotationInk((PDAnnotationMarkup) annotation);
-            }
-        }
-    }
 
     // return border info. BorderStyle must be provided as parameter because
     // method is not available in the base class
@@ -1484,58 +1486,6 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
         graphics.setStroke(oldStroke);
     }
 
-    @Override
-    public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
-        TransparencyGroup group =
-                new TransparencyGroup(form, false, getGraphicsState().getCurrentTransformationMatrix(), null);
-        BufferedImage image = group.getImage();
-        if (image == null) {
-            // image is empty, don't bother
-            return;
-        }
-
-        graphics.setComposite(getGraphicsState().getNonStrokingJavaComposite());
-        setClip();
-
-        // both the DPI xform and the CTM were already applied to the group, so all we do
-        // here is draw it directly onto the Graphics2D device at the appropriate position
-        PDRectangle bbox = group.getBBox();
-        AffineTransform prev = graphics.getTransform();
-
-        Matrix m = new Matrix(xform);
-        float xScale = Math.abs(m.getScalingFactorX());
-        float yScale = Math.abs(m.getScalingFactorY());
-        
-        // adjust the initial translation (includes the translation used to "help" the rotation)
-        graphics.setTransform(AffineTransform.getTranslateInstance(xform.getTranslateX(), xform.getTranslateY()));
-
-        graphics.rotate(Math.toRadians(pageRotation));
-
-        // adjust bbox (x,y) position at the initial scale + cropbox
-        float x = bbox.getLowerLeftX() - pageSize.getLowerLeftX();
-        float y = pageSize.getUpperRightY() - bbox.getUpperRightY();
-        graphics.translate(x * xScale, y * yScale);
-
-        if (flipTG) {
-            graphics.translate(0, image.getHeight());
-            graphics.scale(1, -1);
-        }
-
-        PDSoftMask softMask = getGraphicsState().getSoftMask();
-        if (softMask != null) {
-            Paint awtPaint = new TexturePaint(image,
-                    new Rectangle2D.Float(0, 0, image.getWidth(), image.getHeight()));
-            awtPaint = applySoftMaskToPaint(awtPaint, softMask);
-            graphics.setPaint(awtPaint);
-            graphics.fill(
-                    new Rectangle2D.Float(0, 0, bbox.getWidth() * xScale, bbox.getHeight() * yScale));
-        }
-        else {
-            graphics.drawImage(image, null, null);
-        }
-
-        graphics.setTransform(prev);
-    }
 
     private static class AnnotationBorder {
         private float[] dashArray = null;
@@ -1739,89 +1689,117 @@ public class AMIGraphicsStreamEngine extends PDFGraphicsStreamEngine {
         }
     }
     
-    @Override
-    protected void processSoftMask(PDTransparencyGroup group) throws IOException {
-    	super.processSoftMask(group);
-    	LOG.debug("***processSoftMask "+group);
-    }
-    
-    @Override
-    protected void processTransparencyGroup(PDTransparencyGroup group) throws IOException {
-    	super.processTransparencyGroup(group);
-    	LOG.debug("****processTransparencyGroup "+group);
-    }
-    
-    @Override
-    protected void processType3Stream(PDType3CharProc charProc, Matrix textRenderingMatrix) throws IOException {
-    	super.processType3Stream(charProc, textRenderingMatrix);
-    	LOG.debug("****processType3Stream "+charProc+"; "+textRenderingMatrix);
-    }
-    
-    @Override
-    protected void processAnnotation(PDAnnotation annotation, PDAppearanceStream appearance) throws IOException {
-    	super.processAnnotation(annotation, appearance);
-    	LOG.debug("****processAnnotation "+annotation+"; "+appearance);
-    }
+	private void draw(Shape s) {};
+	private boolean drawImage(Image img, AffineTransform xform, ImageObserver obs) {return true;};
+	private void drawImage(BufferedImage img, BufferedImageOp op, int x, int y) {};
+	private void drawRenderedImage(RenderedImage img, AffineTransform xform) {};
+	private void drawRenderableImage(RenderableImage img, AffineTransform xform) {};
+	private void drawString(String str, int x, int y) {};
+	private void drawString(String str, float x, float y) {};
+	private void drawString(AttributedCharacterIterator iterator, int x, int y) {};
+	private void drawString(AttributedCharacterIterator iterator, float x, float y) {};
+	private void fill(Shape s) {};
+	private boolean hit(Rectangle rect, Shape s, boolean onStroke) {return true;};
+	private GraphicsConfiguration getDeviceConfiguration() {return null;};
+	private void setComposite(Composite comp) {};
+	private void setPaint(Paint paint) {};
+	private void setStroke(Stroke s) {};
+	private void setRenderingHint(Key hintKey, Object hintValue) {};
+	private Object getRenderingHint(Key hintKey) {return null;};
+	private void setRenderingHints(Map<?, ?> hints) {};
+	private void addRenderingHints(Map<?, ?> hints) {};
+	private RenderingHints getRenderingHints() {return null;};
+	private void translate(int x, int y) {};
+	private void translate(double tx, double ty) {};
+	private void rotate(double theta) {};
+	private void rotate(double theta, double x, double y) {};
+	private void scale(double sx, double sy) {};
+	private void shear(double shx, double shy) {};
+	private void transform(AffineTransform Tx) {};
+	private void setTransform(AffineTransform Tx) {};
+	private AffineTransform getTransform() {return null;};
+	private Paint getPaint() {return null;};
+	private Composite getComposite() {return null;};
+	private void setBackground(Color color) {};
+	private Color getBackground() {return null;};
+//	private Stroke getStroke() {return null;};
+	private void clip(Shape s) {};
+	private FontRenderContext getFontRenderContext() {return null;};
+	private Graphics create() {return null;};
+	private Color getColor() {return null;};
+	private void setColor(Color c) {};
+	private void setPaintMode() {};
+	private void setXORMode(Color c1) {};
+	private Font getFont() {return null;};
+	private void setFont(Font font) {};
+	private FontMetrics getFontMetrics(Font f) {return null;};
+	private Rectangle getClipBounds() {return null;};
+	private void clipRect(int x, int y, int width, int height) {};
+	private void setClip(int x, int y, int width, int height) {};
+	private Shape getClip() {return null;};
+	private void setClip(Shape clip) {};
+	private void copyArea(int x, int y, int width, int height, int dx, int dy) {};
+	private void drawLine(int x1, int y1, int x2, int y2) {};
+	private void fillRect(int x, int y, int width, int height) {};
+	private void clearRect(int x, int y, int width, int height) {};
+	private void drawRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {};
+	private void fillRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {};
+	private void drawOval(int x, int y, int width, int height) {};
+	private void fillOval(int x, int y, int width, int height) {};
+	private void drawArc(int x, int y, int width, int height, int startAngle, int arcAngle) {};
+	private void fillArc(int x, int y, int width, int height, int startAngle, int arcAngle) {};
+	private void drawPolyline(int[] xPoints, int[] yPoints, int nPoints) {};
+	private void drawPolygon(int[] xPoints, int[] yPoints, int nPoints) {};
+	private void fillPolygon(int[] xPoints, int[] yPoints, int nPoints) {};
+	private boolean drawImage(Image img, int x, int y, ImageObserver observer) {return true;};
+	private boolean drawImage(Image img, int x, int y, Color bgcolor, ImageObserver observer) {return true;};
+	private boolean drawImage(Image img, int x, int y, int width, int height, ImageObserver observer) {return true;};
+	private boolean drawImage(Image img, int x, int y, int width, int height, Color bgcolor, ImageObserver observer) {return true;};
+	private boolean drawImage(Image img, int dx1, int dy1, int dx2, int dy2,	int sx1, int sy1, int sx2, int sy2, ImageObserver observer) {return true;};
+	private boolean drawImage(Image img, int dx1, int dy1, int dx2, int dy2, int sx1, int sy1, int sx2, int sy2, Color bgcolor, ImageObserver observer) {return true;};
+	
+	private void dispose() {};
 
-    @Override
-    public PDAppearanceStream getAppearance(PDAnnotation annotation) {
-    	LOG.debug("****getAppearance "+annotation);
-    	return super.getAppearance(annotation);
-    }
-    
-    @Override
-    protected void processChildStream(PDContentStream contentStream, PDPage page) throws IOException {
-    	LOG.debug("****processChildStream "+contentStream+"; "+page);
-    	super.processChildStream(contentStream, page);
-    }
+	private String getCurrentPathString() {
+    	LOG.debug("GET CURRENT PATH STRING " + this.currentPathString);
+		return this.currentPathString;
+	}
 
-    @Override
-    //probably not to be subclassed
-    protected void applyTextAdjustment(float tx, float ty) throws IOException {
-//    	LOG.trace("****textAdjustment "+tx+";"+ty);
-    	super.applyTextAdjustment(tx, ty);
-    }
+	private boolean reportUnusualTransforms(AffineTransform Tx) {
+		boolean unusual = false;
+		Transform2 t2 = new Transform2(Tx);
+		RealArray scales = t2.getScales();
+		double scalex = scales.get(0);
+		double scaley = scales.get(1);
+		double scaleRatio = scalex/scaley;
+		Real2 translate = t2.getTranslation();
+		// trap non-square or translated
+		if (!Real.isEqual(scaleRatio, 1.0, 0.3) 
+				|| !translate.isEqualTo(new Real2(0., 0.0), 0.001)) {
+//			System.out.printf("transform(Tx=%s)%n", t2.toString());
+			pdf2svgTransformer.debug("transform "+ new RealArray(t2.getMatrixAsArray()));
+			unusual = true;
+		}
+		return unusual;
+	}
+	
+	protected double invertY(double y) {
+		return mediaBox == null ? y : mediaBox.getHeight() - y;
+	}
 
-    @SuppressWarnings("deprecation")
-	protected void showText(byte[] string) throws IOException {
-//    	System.out.print("~"+new String(string)+"~");
-    	System.out.print(""+new String(string)+"");
-    	super.showText(string);
-    }
-    
-    @Override
-    protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
-            String unicode, Vector displacement) throws IOException {
-    	LOG.debug("****showType3Glyph ");
-    	super.showType3Glyph(textRenderingMatrix, font, code, unicode, displacement);
-    }
+	protected Point2D invertY(Point2D p) {
+		return new Point2D.Double(p.getX(), invertY(p.getY()));
+	}
 
-    // probably not to be subclassed 
-//    @Override
-//    public void processOperator(String operation, List<COSBase> arguments) throws IOException {
-//    	LOG.debug("****processOperator "+operation);
-//       	super.processOperator(operation, arguments);
-//    }
+    private Transform2 invertYTransform2() {
+    	Transform2 t = new Transform2(new double[] {
+    			1.0, 0.0, 0.0,
+    			0.0, -1.0, mediaBox.getHeight(),
+    			0.0, 0.0, 1.0
+    	});
+    	return t;
+	}
 
-    // probably no need to override
-//    @Override
-//    public void processOperator(Operator operator, List<COSBase> arguments) throws IOException {
-//    	LOG.debug("****processOperator "+operator);
-//       	super.processOperator(operator, arguments);
-//    }
-
-    @Override
-    public void unsupportedOperator(Operator operator, List<COSBase> arguments) throws IOException {
-    	LOG.debug("****unsupportedOperator "+operator);
-       	super.unsupportedOperator(operator, arguments);
-    }
-
-    @Override
-    protected void operatorException(Operator operator, List<COSBase> operands, IOException e)
-            throws IOException {
-    	LOG.debug("****operatorException");
-       	super.operatorException(operator, operands, e);
-    }
 
 
 }

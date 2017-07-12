@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.pdfbox.contentstream.PDContentStream;
@@ -83,7 +84,7 @@ import org.xmlcml.pdf2svg.util.Util_1_8;
  */
 // 1.8 public class PDFPage2SVGConverter extends PageDrawer {
 // PDFBox 2.0.6 version
-public class PDFPage2SVGConverter extends AMIGraphicsStreamEngine {
+public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	
 	private static final double DEFAULT_FONT_SIZE = 8.0;
 	private static final int _BOLD_FONT_MIN = 410;
@@ -143,16 +144,12 @@ public class PDFPage2SVGConverter extends AMIGraphicsStreamEngine {
 	private Set<String> weightSet = new HashSet<String>();
 	
 	
-	public PDFPage2SVGConverter(PDFRenderer renderer, PDPage page) throws IOException {
-		this(new AMIPageDrawerParameters(renderer, page));
+	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer, PDFRenderer renderer, PDPage page) throws IOException {
+		this(pdf2svgTransformer, new AMIPageDrawerParameters(renderer, page));
 	}
 	
-	public PDFPage2SVGConverter(PDPage page) throws IOException {
-		this(new AMIPageDrawerParameters((PDFRenderer) null, page));
-	}
-	
-	public PDFPage2SVGConverter(AMIPageDrawerParameters pageDrawerParameters) throws IOException {
-		super(pageDrawerParameters.getPage());
+	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer,  AMIPageDrawerParameters pageDrawerParameters) throws IOException {
+		super(pdf2svgTransformer, pageDrawerParameters.getPage());
 	}
 
 	/** called for each page by PDF2SVGConverter
