@@ -55,8 +55,8 @@ public class Demos {
         PDDocument doc = PDDocument.load(file);
         PDFRenderer renderer = new PDFRenderer(doc);
         PDPage page = doc.getPage(0);
-        AMIGraphics2SVG engine = new PDFPage2SVGConverter(new PDF2SVGTransformer(),renderer, page);
-        engine.run();
+        AMIGraphics2SVG pdfPage2SVGConverter = new PDFPage2SVGConverter(new PDF2SVGTransformer(),renderer, page);
+        pdfPage2SVGConverter.processPage();
         doc.close();
     }
     

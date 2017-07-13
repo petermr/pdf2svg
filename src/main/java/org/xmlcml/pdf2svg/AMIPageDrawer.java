@@ -10,6 +10,8 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
@@ -18,10 +20,20 @@ import org.apache.pdfbox.rendering.PageDrawerParameters;
 import org.apache.pdfbox.util.Matrix;
 import org.apache.pdfbox.util.Vector;
 
+/** this will trap all the style (color, stroke, etc.)
+ * 
+ * @author pm286
+ *
+ */
 public class AMIPageDrawer extends PageDrawer {
+	private static final Logger LOG = Logger.getLogger(AMIPageDrawer.class);
+	static {
+		LOG.setLevel(Level.DEBUG);
+	}
 
    public AMIPageDrawer(PageDrawerParameters parameters) throws IOException {
             super(parameters);
+            LOG.debug("AMIPageDrawer used");
    }
 
     /**

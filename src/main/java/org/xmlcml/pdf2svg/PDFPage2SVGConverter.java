@@ -31,7 +31,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.pdfbox.contentstream.PDContentStream;
@@ -66,15 +65,19 @@ import org.xmlcml.graphics.svg.SVGClipPath;
 import org.xmlcml.graphics.svg.SVGDefs;
 import org.xmlcml.graphics.svg.SVGElement;
 import org.xmlcml.graphics.svg.SVGImage;
+import org.xmlcml.graphics.svg.SVGLine;
 import org.xmlcml.graphics.svg.SVGPath;
+import org.xmlcml.graphics.svg.SVGPathPrimitive;
 import org.xmlcml.graphics.svg.SVGRect;
 import org.xmlcml.graphics.svg.SVGSVG;
 import org.xmlcml.graphics.svg.SVGShape;
 import org.xmlcml.graphics.svg.SVGText;
 import org.xmlcml.graphics.svg.SVGTitle;
 import org.xmlcml.graphics.svg.SVGUtil;
+import org.xmlcml.graphics.svg.path.PathPrimitiveList;
 import org.xmlcml.pdf2svg.util.PDF2SVGUtil;
 import org.xmlcml.pdf2svg.util.Util_1_8;
+import org.xmlcml.xml.XMLUtil;
 
 /** converts a PDPage to SVG
  * Originally used PageDrawer to capture the PDF operations.These have been
@@ -93,7 +96,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	private static final String ITALIC = "italic";
 	private static final String CLIP_PATH = "clipPath";
 
-	private final static Logger LOG = Logger.getLogger(PDFPage2SVGConverter.class);
+	final static Logger LOG = Logger.getLogger(PDFPage2SVGConverter.class);
 
 	// only use if mediaBox fails to give dimension
 	private static final Dimension DEFAULT_DIMENSION = new Dimension(800, 800);
@@ -105,7 +108,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 //	private static double eps = 0.001;
 
 	private BasicStroke basicStroke;
-	private SVGSVG svg;
+	private SVGSVG svgBuilder;
 	private PDGraphicsState graphicsState;
 	private Matrix testMatrix;
 	private PDFont pdFont;
@@ -122,7 +125,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	private Encoding encoding; // to distinguish from content-type encoding
 	private String charname;
 	private Integer charCode = null;
-	private Real2 currentXY;
+	private Real2 currentPoint;
 	private String fontSubType;
 	private String textContent;
 	private NonStandardFontManager amiFontManager;
@@ -136,6 +139,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	private boolean reportedEncodingError = false;
 	private TextPosition textPosition;
 
+	private PathPrimitiveList pathPrimitiveList;
 
 	private boolean annotateText;
 	private int debugCount = 0;
@@ -146,10 +150,17 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	
 	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer, PDFRenderer renderer, PDPage page) throws IOException {
 		this(pdf2svgTransformer, new AMIPageDrawerParameters(renderer, page));
+		init();
 	}
 	
+	private void init() {
+        this.pathPrimitiveList = new PathPrimitiveList();
+        this.svgBuilder = new SVGSVG();
+	}
+
 	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer,  AMIPageDrawerParameters pageDrawerParameters) throws IOException {
 		super(pdf2svgTransformer, pageDrawerParameters.getPage());
+		init();
 	}
 
 	/** called for each page by PDF2SVGConverter
@@ -166,7 +177,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 		amiFontManager.setNullFontDescriptorReport(true);
 		createSVGSVG();
 		drawPage(page);
-		return svg;
+		return svgBuilder;
 	}
 	
 	void drawPage(PDPage p) {
@@ -223,7 +234,7 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 				box.setStroke(color[icol]);
 				box.setOpacity(1.0);
 				box.setStrokeWidth(2.0);
-				svg.appendChild(box);
+				svgBuilder.appendChild(box);
 				icol = (icol+1) % 6;
 			}
 		}
@@ -310,12 +321,12 @@ xmlns="http://www.w3.org/2000/svg">
    </clipPath>
    </defs>
  */
-		List<SVGElement> defList = SVGUtil.getQuerySVGElements(svg, "/svg:g/svg:defs[@id='defs1']");
+		List<SVGElement> defList = SVGUtil.getQuerySVGElements(svgBuilder, "/svg:g/svg:defs[@id='defs1']");
 		defs1 = (defList.size() > 0) ? defList.get(0) : null;
 		if (defs1 == null) {
 			defs1 = new SVGDefs();
 			defs1.setId("defs1");
-			svg.insertChild(defs1, 0);
+			svgBuilder.insertChild(defs1, 0);
 		}
 	}
 
@@ -390,7 +401,7 @@ xmlns="http://www.w3.org/2000/svg">
 
 		addContentAndAttributesToSVGText(svgText);
 		changeFontStyles(svgText);
-		svg.appendChild(svgText);
+		svgBuilder.appendChild(svgText);
 	}
 
 	private void changeFontStyles(SVGText svgText) {
@@ -542,7 +553,7 @@ xmlns="http://www.w3.org/2000/svg">
 //				Encoding encoding1 = pdFont.getFontEncoding();
 //				PDFontDescriptor fontDescriptor = amiFont.getFontDescriptor();
 //				COSDictionary cosDict = (COSDictionary) ((pdFont == null) ? null : ((PDSimpleFont) pdFont).getToUnicode());
-				LOG.trace("Null encoding for character: "+charname+" / "+charCode+" at "+currentXY+" font: "+fontName+" / "+
+				LOG.trace("Null encoding for character: "+charname+" / "+charCode+" at "+currentPoint+" font: "+fontName+" / "+
 			       fontFamilyName+" / "+amiFont.getBaseFont()+
 			       "\n                FURTHER NULL ENCODING ERRORS HIDDEN");
 				reportedEncodingError = true;
@@ -969,8 +980,8 @@ xmlns="http://www.w3.org/2000/svg">
 		// opposite direction
 		testMatrix.setValue(0, 1, (-1) * testMatrix.getValue(0, 1));
 		testMatrix.setValue(1, 0, (-1) * testMatrix.getValue(1, 0));
-		currentXY = new Real2(x, y);
-		svgText.setXY(currentXY);
+		currentPoint = new Real2(x, y);
+		svgText.setXY(currentPoint);
 	}
 
 	private void createGraphicsStateAndPaintAndComposite(SVGText svgText) {
@@ -1084,7 +1095,7 @@ xmlns="http://www.w3.org/2000/svg">
 		}
 		svgPath.setStrokeWidth(lineWidth);
 		svgPath.format(nPlaces);
-		svg.appendChild(svgPath);
+		svgBuilder.appendChild(svgPath);
 		generalPath.reset();
 	}
 
@@ -1179,7 +1190,7 @@ xmlns="http://www.w3.org/2000/svg">
 		svgImage.setTransform(t2);
 		try {
 			svgImage.readImageDataIntoSrcValue(bImage, SVGImage.IMAGE_PNG);
-			svg.appendChild(svgImage);
+			svgBuilder.appendChild(svgImage);
 		} catch (Exception e) {
 			LOG.error("Cannot convert image, skipping "+e);
 		}
@@ -1191,7 +1202,7 @@ xmlns="http://www.w3.org/2000/svg">
 		try {
 			svgImage.setHref(filename);
 			svgImage.setXYWidthHeight(bImage);
-			svg.appendChild(svgImage);
+			svgBuilder.appendChild(svgImage);
 		} catch (Exception e) {
 			LOG.error("Cannot convert image, skipping "+e);
 		}
@@ -1209,28 +1220,69 @@ xmlns="http://www.w3.org/2000/svg">
 	 * this is partly beacuse SVGFoo may have defaults (bad idea?)
 	 */
 	public void createSVGSVG() {
-		this.svg = new SVGSVG();
+		this.svgBuilder = new SVGSVG();
 		if (pdf2svgConverter != null) {
-			svg.setWidth(pdf2svgConverter.pageWidth);
-			svg.setHeight(pdf2svgConverter.pageHeight);
+			svgBuilder.setWidth(pdf2svgConverter.pageWidth);
+			svgBuilder.setHeight(pdf2svgConverter.pageHeight);
 		}
-		svg.setStroke("none");
-		svg.setStrokeWidth(0.0);
-		svg.addNamespaceDeclaration(PDF2SVGUtil.SVGX_PREFIX, PDF2SVGUtil.SVGX_NS);
+		svgBuilder.setStroke("none");
+		svgBuilder.setStrokeWidth(0.0);
+		svgBuilder.addNamespaceDeclaration(PDF2SVGUtil.SVGX_PREFIX, PDF2SVGUtil.SVGX_NS);
 		clipStringSet = new HashSet<String>();
 	}
 
 	public SVGSVG getSVG() {
 		getOrCreateSVG();
-		return svg;
+		return svgBuilder;
 	}
 
 	private void getOrCreateSVG() {
-		if (svg == null) {
+		if (svgBuilder == null) {
 			System.out.print(" SVG ");
 //			LOG.warn("Creating new SVG - probably should have been done elsewhere");
 			createSVGSVG();
 		}
+	}
+
+	public void setCurrentPoint(Real2 point) {
+		currentPoint = point;
+	}
+
+	public void addPrimitive(SVGPathPrimitive primitive) {
+		this.pathPrimitiveList.add(primitive);
+	}
+
+	public void createPathAndClearPrimitiveList() {
+		SVGPath path = new SVGPath(pathPrimitiveList);
+		addFillStroke(path);
+		svgBuilder.appendChild(path);
+		pathPrimitiveList =  new PathPrimitiveList();
+	}
+
+	public void lineTo(Real2 point) {
+		String stroke = getStrokeString();
+		SVGLine line = new SVGLine(currentPoint, point);
+		line.setStroke(stroke);
+		svgBuilder.appendChild(line);
+		this.currentPoint = point;
+	}
+
+	public void addText(String txt) {
+		txt = XMLUtil.removeNonXML(txt);
+		SVGText svgText = new SVGText(currentPoint, txt);
+		addFillStroke(svgText);
+		svgText.setFontSize(10.0);
+		svgBuilder.appendChild(svgText);
+	}
+
+	public void appendChild(SVGElement element) {
+		svgBuilder.appendChild(element);
+	}
+
+	public void appendChild(SVGText svgText) {
+		LOG.debug("t: "+svgText);
+		addFillStroke(svgText);
+		svgBuilder.appendChild(svgText);
 	}
 
 //	@Override

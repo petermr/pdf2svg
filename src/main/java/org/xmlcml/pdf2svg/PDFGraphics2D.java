@@ -54,6 +54,9 @@ import org.xmlcml.graphics.svg.SVGPath;
  * not be required
 
   * a new PDFGraphics object is created to capture glyphVectors 
+  * 
+  * I suspect we don't use this now... 2017-07
+  * 
  */
 public class PDFGraphics2D extends Graphics2D {
 

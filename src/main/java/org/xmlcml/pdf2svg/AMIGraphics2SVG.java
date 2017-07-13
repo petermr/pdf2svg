@@ -38,7 +38,6 @@ import java.awt.TexturePaint;
 import java.awt.Transparency;
 import java.awt.color.ColorSpace;
 import java.awt.font.FontRenderContext;
-import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
 import java.awt.geom.GeneralPath;
@@ -112,10 +111,14 @@ import org.xmlcml.euclid.Real2Array;
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.Transform2;
 import org.xmlcml.euclid.Util;
+import org.xmlcml.euclid.Vector2;
+import org.xmlcml.graphics.svg.SVGElement;
 import org.xmlcml.graphics.svg.SVGG;
 import org.xmlcml.graphics.svg.SVGPath;
 import org.xmlcml.graphics.svg.SVGRect;
 import org.xmlcml.graphics.svg.SVGText;
+import org.xmlcml.graphics.svg.StyleAttribute;
+import org.xmlcml.graphics.svg.StyleAttribute.Preserve;
 import org.xmlcml.graphics.svg.path.CubicPrimitive;
 import org.xmlcml.graphics.svg.path.MovePrimitive;
 
@@ -188,17 +191,26 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
      */
     protected AMIGraphics2SVG(PDF2SVGTransformer pdf2svgTransformer, PDPage page) {
         super(page);
+        mediaBox = page.getMediaBox();
         System.out.println("************** " + page + " ************************");
         this.renderer = null;
+        createGraphics();
         this.pdf2svgTransformer = pdf2svgTransformer;
     }
 
-    /**
+    private void createGraphics() {
+    	
+    	BufferedImage image = new BufferedImage((int)mediaBox.getWidth(), (int)mediaBox.getHeight(), BufferedImage.TYPE_INT_RGB);
+    	graphics = (Graphics2D) image.getGraphics();
+    	LOG.debug("Graphics: "+graphics);
+	}
+
+	/**
      * Runs the engine on the current page.
      *
      * @throws IOException If there is an IO error while drawing the page.
-     */
-    public void run() throws IOException {
+     */    
+    public void processPage() throws IOException {
     	mediaBox = getPage().getMediaBox();
         processPage(getPage());
 
@@ -221,41 +233,42 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         return graphics;
     }
 
-    /**
-     * Overridden from PDFStreamEngine.
-     */
-    @Override
-    public void showTextString(byte[] bytes) throws IOException {
-    	String text = new String(bytes);
-    	pdf2svgTransformer.debug(text);
-    	pdf2svgTransformer.addText(text);
-        super.showTextString(bytes);
-    }
+//    /**
+//     * Overridden from PDFStreamEngine.
+//     */
+//    @Override
+//    public void showTextString(byte[] bytes) throws IOException {
+//    	String text = new String(bytes);
+//    	pdf2svgTransformer.debug(text);
+////    	pdf2svgTransformer.addText(text); // probably don't need
+//        super.showTextString(bytes);
+//    }
 
-    /**
-     * Overridden from PDFStreamEngine.
-     */
-    @Override
-    public void showTextStrings(COSArray array) throws IOException {
-    	for (int i = 0; i < array.size(); i++) {
-    		COSBase base = array.get(i);
-    		String s = base.toString();
-    		if (base instanceof COSFloat) {
-    			s = String.valueOf(((COSFloat)base).doubleValue());
-    			s = "";
-    		} else if (base instanceof COSInteger) {
-        		s = String.valueOf(((COSInteger)base).intValue());
-        		s = "";
-    		} else if (base instanceof COSString) {
-        		s = String.valueOf(((COSString)base).getString());
-    		} else {
-    			throw new RuntimeException("Class "+base.getClass());
-    		}
-    		pdf2svgTransformer.debug(s);
-    		pdf2svgTransformer.addText(s);
-    	}
-        super.showTextStrings(array);
-    }
+//    /**
+//     * Overridden from PDFStreamEngine.
+//     */
+//    @Override
+//    public void showTextStrings(COSArray array) throws IOException {
+//    	// I don't think this needs capturing - it ends up in glyphs
+//    	for (int i = 0; i < array.size(); i++) {
+//    		COSBase base = array.get(i);
+//    		String s = base.toString();
+//    		if (base instanceof COSFloat) {
+//    			s = String.valueOf(((COSFloat)base).doubleValue());
+//    			s = "";
+//    		} else if (base instanceof COSInteger) {
+//        		s = String.valueOf(((COSInteger)base).intValue());
+//        		s = "";
+//    		} else if (base instanceof COSString) {
+//        		s = String.valueOf(((COSString)base).getString());
+//    		} else {
+//    			throw new RuntimeException("Class "+base.getClass());
+//    		}
+//    		pdf2svgTransformer.debug(s);
+////    		pdf2svgTransformer.addText(s);
+//    	}
+//        super.showTextStrings(array);
+//    }
 
     /**
      * Overridden from PDFStreamEngine.
@@ -266,56 +279,56 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
                              Vector displacement) throws IOException {
         super.showGlyph(textRenderingMatrix, font, code, unicodeChar, displacement);
         LOG.trace("trmat: "+textRenderingMatrix+"; font: "+font+"; code: "+code+"; inicode: "+unicodeChar+"; displacement: "+displacement);
-        SVGG g = new SVGG();
         float[][] mat = textRenderingMatrix.getValues();
         double[] array = new double[] {
-        		mat[0][0],
-        		mat[1][0],
-        		mat[2][0],
-        		mat[0][1],
-        		mat[1][1],
-        		mat[2][1],
-        		mat[0][2],
-        		mat[1][2],
-        		mat[2][2],
+        		mat[0][0], mat[1][0], mat[2][0],
+        		mat[0][1], mat[1][1], mat[2][1],
+        		mat[0][2], mat[1][2], mat[2][2],
         };
         Transform2 t0 = new Transform2(array);
-        double fontSize = t0.getScales().get(0);
-        Transform2 t1 = invertYTransform2();
-        Transform2 t2 = t1.concatenate(t0);
+        double scale = Math.sqrt(t0.getScales().get(0) * t0.getScales().get(1));
+        Transform2 t2 = invertYTransform2().concatenate(t0);
+        // get coordinate from matrix
         RealArray xy = new RealArray(new double[]{0.0, 0.0, 1.0});
         xy = t2.multiply(xy);
-        
-        SVGText text = new SVGText(new Real2(xy.get(0), xy.get(1)), unicodeChar);
-        text.setFontSize(fontSize);
-        text.setFill("black");
-        g.appendChild(text);
-        pdf2svgTransformer.append(g);
+        SVGText svgText = new SVGText(new Real2(xy.get(0), xy.get(1)), unicodeChar);
+        svgText.setFontStyle(font.getName());
+        svgText.setFontSize(scale);
+		addFillStroke(svgText);
+    	StyleAttribute.createStyleAttribute(svgText, Preserve.REMOVE); // normalizes to style attribute
+        if (!Real.isEqual((double)mat[0][1], 0.0, pdf2svgTransformer.getEpsilon()) ||
+            !Real.isEqual((double)mat[1][0], 0.0, pdf2svgTransformer.getEpsilon())) {
+        	//non-zero rotation
+        	SVGG g = rotateCharacter(mat, xy, svgText, scale);
+            pdf2svgTransformer.append(g);
+        } else {
+        	pdf2svgTransformer.appendText(svgText);
+        }
     }
-    
-	/** where is this used?
-     * 
-     * @param g
-     * @param x
-     * @param y
-     */
-	private void drawGlyphVector(GlyphVector g, float x, float y) {
-		pdf2svgTransformer.debug("GlyphVector "+g);
-		Shape shape = g.getOutline();
-		AffineTransform at = new AffineTransform();
-		this.currentPathString = SVGPath.getPathAsDString(shape.getPathIterator(at));
-		SVGPath svgPath = new SVGPath(this.currentPathString);
-		pdf2svgTransformer.setCurrentPoint(new Real2(x, invertY(y)));
-		pdf2svgTransformer.append(svgPath);
+
+	private SVGG rotateCharacter(float[][] mat, RealArray xy, SVGText text, double scale) {
+		
+		Transform2 rotmat = new Transform2(new double[]{
+			mat[0][0]/scale,mat[0][1]/scale,0.0,
+			mat[1][0]/scale,mat[1][1]/scale,0.0,
+			0.0,0.0,1.0,
+		});
+		Transform2 translate0 = new Transform2(new Vector2(-xy.get(0), -xy.get(1)));
+		Transform2 translate1 = new Transform2(new Vector2(xy.get(0), xy.get(1)));
+		Transform2 mat0rot1 = translate1.concatenate(rotmat).concatenate(translate0);
+		SVGG g = new SVGG();
+		g.setTransform(mat0rot1);
+		g.appendChild(text);
+		return g;
 	}
-	
+    
     /**
      * Returns the current line path. This is reset to empty after each fill/stroke.
      */
     protected final GeneralPath getLinePath() {
     	String linePathD = SVGPath.constructDString(linePath);
     	pdf2svgTransformer.debug(" LINEPATH: "+linePathD);
-    	pdf2svgTransformer.clearPath();
+    	pdf2svgTransformer.createPathFromPrimitiveList();
 //    	LOG.debug("LINEPATH "+linePath);
         return linePath;
     }
@@ -450,7 +463,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     // sets the clipping path using caching for performance, we track lastClip manually because
     // Graphics2D#getClip() returns a new object instead of the same one passed to setClip
     private void setClip() {
-    	LOG.debug("clip");
+    	LOG.trace("clip");
         Area clippingPath = getGraphicsState().getCurrentClippingPath();
         if (clippingPath != lastClip) {
         	if (graphics == null) {
@@ -462,23 +475,26 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         }
     }
 
+    /** I don't know whether this will be useful
+     * 
+     * @throws IOException
+     */
     @Override
     public void beginText() throws IOException {
+    	super.beginText();
     	LOG.trace("BEGIN TEXT");
     	pdf2svgTransformer.debug(" BT ");
-    	SVGG g = new SVGG();
-    	g.setClassName("beginText");
-		pdf2svgTransformer.append(g);
         setClip();
         beginTextClip();
     }
 
+    /** I don't know whether this will be useful
+     * 
+     * @throws IOException
+     */
     @Override
     public void endText() throws IOException {
     	pdf2svgTransformer.debug(" ET ");
-    	SVGG g = new SVGG();
-    	g.setClassName("endText");
-		pdf2svgTransformer.append(g);
         endTextClip();
     }
     
@@ -621,7 +637,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     @Override
     public void moveTo(float x, float yy) {
     	double y = invertY(yy);
-    	LOG.debug("MOVE "+x+","+y);
+    	LOG.trace("MOVE "+x+","+y);
     	pdf2svgTransformer.debug(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
         linePath.moveTo(x, y);
         pdf2svgTransformer.moveTo(new Real2(x, y));
@@ -640,21 +656,21 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     }
 
     @Override
-    public void curveTo(float x1, float yy1, float x2, float yy2, float x3, float yy3) {
-    	double y1 = invertY(yy1);
-    	double y2 = invertY(yy2);
-    	double y3 = invertY(yy3);
+    public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3) {
+    	double yy1 = invertY(y1);
+    	double yy2 = invertY(y2);
+    	double yy3 = invertY(y3);
     	Real2 point0 = Real2.createReal2(getCurrentPoint());
-    	LOG.debug("CURVE "+x1+","+y1);
+    	LOG.trace("CURVE "+x1+","+yy1);
     	MovePrimitive move = new MovePrimitive(point0);
     	pdf2svgTransformer.addPrimitive(move);
-    	pdf2svgTransformer.debug(" C"+Util.format(x1,NDEC)+","+Util.format(y1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(y2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(y3,NDEC)+" ");
-        linePath.curveTo(x1, y1, x2, y2, x3, y3);
+    	pdf2svgTransformer.debug(" C"+Util.format(x1,NDEC)+","+Util.format(yy1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(yy2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(yy3,NDEC)+" ");
+        linePath.curveTo(x1, yy1, x2, yy2, x3, yy3);
         Real2Array coordArray = new Real2Array();
         
-        coordArray.add(new Real2(x1, y1));
-        coordArray.add(new Real2(x2, y2));
-        Real2 point = new Real2(x3, y3);
+        coordArray.add(new Real2(x1, yy1));
+        coordArray.add(new Real2(x2, yy2));
+        Real2 point = new Real2(x3, yy3);
         coordArray.add(point);
         CubicPrimitive cubic = new CubicPrimitive(coordArray);
         pdf2svgTransformer.addPrimitive(cubic);
@@ -664,7 +680,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
 
     @Override
     public Point2D getCurrentPoint() {
-    	LOG.debug("CURRENT: "+linePath.getCurrentPoint());
+    	LOG.trace("CURRENT: "+linePath.getCurrentPoint());
     	Point2D point = linePath.getCurrentPoint();
     	pdf2svgTransformer.debug(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
     	pdf2svgTransformer.setCurrentPoint(new Real2(point.getX(), point.getY()));
@@ -686,9 +702,9 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
             clipWindingRule = -1;
         }
         linePath.reset();
-    	SVGG g = new SVGG();
-    	g.setClassName("endPath");
-		pdf2svgTransformer.append(g);
+//    	SVGG g = new SVGG();
+//    	g.setClassName("endPath");
+//		pdf2svgTransformer.append(g);
 
     }
     
@@ -898,7 +914,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     @SuppressWarnings("deprecation")
 	protected void showText(byte[] string) throws IOException {
     	pdf2svgTransformer.debug(""+new String(string)+"");
-    	pdf2svgTransformer.addText(""+new String(string)+"");
+//    	pdf2svgTransformer.addText(""+new String(string)+"");
     	super.showText(string);
     }
     
@@ -913,7 +929,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     public void showTransparencyGroup(PDTransparencyGroup form) throws IOException {
     	LOG.debug("PDTRANSP");
         TransparencyGroup group =
-                new TransparencyGroup(form, false, getGraphicsState().getCurrentTransformationMatrix(), null);
+            new TransparencyGroup(form, false, getGraphicsState().getCurrentTransformationMatrix(), null);
         BufferedImage image = group.getImage();
         if (image == null) {
             // image is empty, don't bother
@@ -1799,6 +1815,47 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     	});
     	return t;
 	}
+
+	protected void addFillStroke(SVGElement element) {
+		String fill = getFillString();
+		if (fill != null) element.setFill(fill);
+		String stroke = getStrokeString();
+		if (stroke != null) element.setStroke(stroke);
+		LOG.debug("f "+fill+"; s "+stroke+"; "+element);
+//		StyleAttribute.createStyleAttribute(element, Preserve.REMOVE);
+		LOG.debug("EE "+element.toString());
+	}
+
+	/** get RGB for current stroke.
+	 * 
+	 * @param state
+	 * @return
+	 */
+	String getStrokeString() {
+		PDColor color = getGraphicsState() == null ? null : getGraphicsState().getStrokingColor();
+		return convertToRGB(color);
+	}
+
+	/** get RGB for current non-stroke.
+	 * 
+	 * @param state
+	 * @return
+	 */
+	String getFillString() {
+		PDColor color = getGraphicsState() == null ? null : getGraphicsState().getNonStrokingColor();
+		return convertToRGB(color);
+	}
+
+	private String convertToRGB(PDColor color) {
+		String rgb = null;
+		try {
+			rgb = (color == null) ? null : String.format("#%06x", color.toRGB());
+		} catch (IOException e) {
+			// cannot convert
+		}
+		return rgb;
+	}
+
 
 
 
