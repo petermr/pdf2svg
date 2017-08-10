@@ -1,6 +1,7 @@
 package org.xmlcml.pdf2svg.demos;
 
 import java.io.File;
+import java.io.IOException;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -72,9 +73,52 @@ public class Demos {
     }
     
 	@Test
+    public void testBasic() throws Exception {
+		String[] fileRoots = {
+//				"basic.pdf",
+//				"blank.pdf",
+//				"circle.pdf",
+//				"dash.pdf",
+				"line.pdf",
+//				"text.pdf",
+//				"white.pdf",
+					};
+		for (String fileRoot : fileRoots) {
+			createSVG(new File(Fixtures.EXAMPLES_DIR, "rendering"), fileRoot);
+		}
+        
+    }
+    
+	@Test
     public void testMDPI() throws Exception {
         File file = new File(Fixtures.MDPI_DIR, "materials-05-00027.pdf");
 
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        pdf2svgTransformer.convert(file);
+        
+    }
+    
+	@Test
+    public void testMDPI1() throws Exception {
+        File file = new File(Fixtures.MDPI_DIR, "metabolites-02-00100.pdf");
+
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        pdf2svgTransformer.convert(file);
+        
+    }
+    
+	@Test
+    public void testLancet() throws Exception {
+        File file = new File(Fixtures.MISC_DIR, "Lancet.pdf");
+
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        pdf2svgTransformer.convert(file);
+        
+    }
+    
+	@Test
+    public void testHindawi() throws Exception {
+        File file = new File(Fixtures.MISC_DIR, "9872540.pdf");
         PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
         pdf2svgTransformer.convert(file);
         
@@ -102,6 +146,14 @@ public class Demos {
 		);
 	}
 	
-	
+// =============================================
+
+	private void createSVG(File dir, String fileRoot) throws IOException {
+		File file = new File(dir, fileRoot);
+        PDF2SVGTransformer pdf2svgTransformer = new PDF2SVGTransformer();
+        pdf2svgTransformer.convert(file);
+        LOG.debug("SVG in target/debug");
+	}
+
 	
 }
