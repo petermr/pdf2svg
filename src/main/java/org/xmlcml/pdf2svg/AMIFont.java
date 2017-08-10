@@ -46,6 +46,9 @@ import org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.xmlcml.font.NonStandardFontFamily;
 import org.xmlcml.font.NonStandardFontManager;
+import org.xmlcml.graphics.svg.GraphicsElement;
+import org.xmlcml.graphics.svg.StyleAttributeFactory;
+import org.xmlcml.graphics.svg.StyleBundle;
 import org.xmlcml.pdf2svg.util.Util_1_8;
 
 /** wrapper for PDType1Font. is meant to manage the bad Fontnames, other
@@ -57,6 +60,8 @@ import org.xmlcml.pdf2svg.util.Util_1_8;
  *
  */
 public class AMIFont {
+
+	public static final String FONT_FAMILY = "font-family";
 
 	private final static Logger LOG = Logger.getLogger(AMIFont.class);
 	
@@ -763,5 +768,6 @@ and
 		int idx = s.indexOf("+");
 		return idx == -1 ? s : s.substring(idx + 1);
 	}
+
 
 }

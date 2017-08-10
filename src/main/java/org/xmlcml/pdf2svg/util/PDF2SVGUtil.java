@@ -26,7 +26,7 @@ import org.apache.pdfbox.util.Matrix;
 
 import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.RealMatrix;
-import org.xmlcml.graphics.svg.SVGElement;
+import org.xmlcml.graphics.svg.GraphicsElement;
 import org.xmlcml.xml.XMLConstants;
 
 public class PDF2SVGUtil {
@@ -43,14 +43,14 @@ public class PDF2SVGUtil {
 	public static final String TEXT_CHAR = "textChar";
 	public static final String TEXT_HEX = "textHex";
 	
-	public static void setSVGXAttribute(SVGElement svgElement, String attName, String value) {
+	public static void setSVGXAttribute(GraphicsElement svgElement, String attName, String value) {
 		if (attName != null && value != null) {
 			Attribute attribute = new Attribute(SVGX_PREFIX+XMLConstants.S_COLON+attName, SVGX_NS, value);
 			svgElement.addAttribute(attribute);
 		}
 	}
 
-	public static String getSVGXAttribute(SVGElement svgElement, String attName) {
+	public static String getSVGXAttribute(GraphicsElement svgElement, String attName) {
 		Attribute attribute = svgElement.getAttribute(attName, SVGX_NS);
 		return (attribute == null) ? null : attribute.getValue();
 	}

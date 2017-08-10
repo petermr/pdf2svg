@@ -12,7 +12,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.xmlcml.euclid.Real2;
-import org.xmlcml.graphics.svg.SVGElement;
+import org.xmlcml.graphics.svg.GraphicsElement;
 import org.xmlcml.graphics.svg.SVGLine;
 import org.xmlcml.graphics.svg.SVGPath;
 import org.xmlcml.graphics.svg.SVGPathPrimitive;
@@ -39,13 +39,13 @@ public class PDF2SVGTransformer {
 	private PDDocument document;
 	private PDFRenderer renderer;
 	private int pageCount;
-	private StringBuilder debugBuilder;
+	StringBuilder debugBuilder;
 	private SVGSVG svgBuilder;
 //	private Real2 currentPoint = new Real2(0.0, 0.0); // to avoid null pointer
 	private Multiset<String> glyphSet;
 	private Multiset<String> codePointSet;
 	private double eps = 0.000001;
-	private PDFPage2SVGConverter currentPdfPage2SVGConverter;
+	private PDFPage2SVGConverter pdfPage2SVGConverter;
 
 	public PDF2SVGTransformer() {
         this.debugBuilder = new StringBuilder();
@@ -69,9 +69,9 @@ public class PDF2SVGTransformer {
         for (int ipage = 0; ipage < pageCount; ipage++) {
 	        PDPage page = document.getPage(ipage);
 	        LOG.debug("page: "+ipage);
-	        currentPdfPage2SVGConverter = new PDFPage2SVGConverter(this, renderer, page);
-	        currentPdfPage2SVGConverter.processPage();
-	        SVGElement svgElement = currentPdfPage2SVGConverter.getSVG();
+	        pdfPage2SVGConverter = new PDFPage2SVGConverter(this, renderer, page);
+	        pdfPage2SVGConverter.processPage();
+	        GraphicsElement svgElement = pdfPage2SVGConverter.getSVG();
 	        this.writePage(new File("target/debug/"+fileRoot+"/page_"+ipage+".txt"));
 	        XMLUtil.debug(svgElement, new FileOutputStream(new File("target/debug/"+fileRoot+"/page_"+ipage+".svg")), 1);
         }
@@ -91,41 +91,8 @@ public class PDF2SVGTransformer {
 		debugBuilder = new StringBuilder();
 	}
 
-	public void debug(String string) {
-		debugBuilder.append(string);
-	}
-
-	public void append(SVGElement element) {
-		currentPdfPage2SVGConverter.appendChild(element);
-	}
-
-	public void appendText(SVGText text) {
-		currentPdfPage2SVGConverter.appendChild(text);
-	}
-
-	public void addPrimitive(SVGPathPrimitive primitive) {
-		currentPdfPage2SVGConverter.addPrimitive(primitive);
-	}
-
-	public void setCurrentPoint(Real2 point) {
-//		System.out.println("** point "+point);
-		currentPdfPage2SVGConverter.setCurrentPoint(point);
-	}
-
-	public void createPathFromPrimitiveList() {
-		currentPdfPage2SVGConverter.createPathAndClearPrimitiveList();
-	}
-
-	public void moveTo(Real2 point) {
-		currentPdfPage2SVGConverter.setCurrentPoint(point);
-	}
-
-	public void lineTo(Real2 point) {
-		currentPdfPage2SVGConverter.lineTo(point);
-	}
-
-	public void addText(String txt) {
-		currentPdfPage2SVGConverter.addText(txt);
+	public void append(GraphicsElement element) {
+		getPdfPage2SVGConverter().appendChild(element);
 	}
 
 	public void addCodePoint(String codePointS) {
@@ -136,6 +103,12 @@ public class PDF2SVGTransformer {
 	public double getEpsilon() {
 		return eps;
 	}
+
+	public PDFPage2SVGConverter getPdfPage2SVGConverter() {
+		return pdfPage2SVGConverter;
+	}
+	
+	
 
 
 }

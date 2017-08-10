@@ -68,15 +68,13 @@ import org.apache.pdfbox.contentstream.PDFStreamEngine;
 import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
-import org.apache.pdfbox.cos.COSFloat;
-import org.apache.pdfbox.cos.COSInteger;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSNumber;
-import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDFontDescriptor;
 import org.apache.pdfbox.pdmodel.font.PDType1CFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.PDType3CharProc;
@@ -112,13 +110,12 @@ import org.xmlcml.euclid.RealArray;
 import org.xmlcml.euclid.Transform2;
 import org.xmlcml.euclid.Util;
 import org.xmlcml.euclid.Vector2;
-import org.xmlcml.graphics.svg.SVGElement;
+import org.xmlcml.graphics.svg.GraphicsElement;
 import org.xmlcml.graphics.svg.SVGG;
 import org.xmlcml.graphics.svg.SVGPath;
-import org.xmlcml.graphics.svg.SVGRect;
 import org.xmlcml.graphics.svg.SVGText;
-import org.xmlcml.graphics.svg.StyleAttribute;
-import org.xmlcml.graphics.svg.StyleAttribute.Preserve;
+import org.xmlcml.graphics.svg.StyleAttributeFactory;
+import org.xmlcml.graphics.svg.path.ClosePrimitive;
 import org.xmlcml.graphics.svg.path.CubicPrimitive;
 import org.xmlcml.graphics.svg.path.MovePrimitive;
 
@@ -285,6 +282,15 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         		mat[0][1], mat[1][1], mat[2][1],
         		mat[0][2], mat[1][2], mat[2][2],
         };
+        PDFontDescriptor fontDescriptor = font.getFontDescriptor();
+        LOG.debug("FONT: " /*+fontDescriptor+";*/ 
+        		+ " wt "+ fontDescriptor.getFontWeight() +";"
+				+ " fixed "+fontDescriptor.isFixedPitch() + "; "
+				+ " bold "+fontDescriptor.isForceBold() + "; "
+				+ " subType "+font.getSubType() + "; "
+				+ " italangle "+fontDescriptor.getItalicAngle() +"; "
+				+ " type "+ font.getType() + "; "
+				+ " stand14 " + font.isStandard14());
         Transform2 t0 = new Transform2(array);
         double scale = Math.sqrt(t0.getScales().get(0) * t0.getScales().get(1));
         Transform2 t2 = invertYTransform2().concatenate(t0);
@@ -292,17 +298,21 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         RealArray xy = new RealArray(new double[]{0.0, 0.0, 1.0});
         xy = t2.multiply(xy);
         SVGText svgText = new SVGText(new Real2(xy.get(0), xy.get(1)), unicodeChar);
-        svgText.setFontStyle(font.getName());
+        svgText.setFontFamily(font.getName());
         svgText.setFontSize(scale);
 		addFillStroke(svgText);
-    	StyleAttribute.createStyleAttribute(svgText, Preserve.REMOVE); // normalizes to style attribute
+    	StyleAttributeFactory.createAndAddOldStyleAttribute(svgText); // normalizes to style attribute
         if (!Real.isEqual((double)mat[0][1], 0.0, pdf2svgTransformer.getEpsilon()) ||
             !Real.isEqual((double)mat[1][0], 0.0, pdf2svgTransformer.getEpsilon())) {
         	//non-zero rotation
         	SVGG g = rotateCharacter(mat, xy, svgText, scale);
             pdf2svgTransformer.append(g);
         } else {
-        	pdf2svgTransformer.appendText(svgText);
+        	pdf2svgTransformer.getPdfPage2SVGConverter().appendChild(svgText);
+        }
+        svgText.setSVGXFontWidth(Util.format((double)displacement.getX(), NDEC)); // char width
+        if (displacement.getY() > 0.001) {
+        	LOG.debug("VECTOR "+displacement);
         }
     }
 
@@ -327,8 +337,8 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
      */
     protected final GeneralPath getLinePath() {
     	String linePathD = SVGPath.constructDString(linePath);
-    	pdf2svgTransformer.debug(" LINEPATH: "+linePathD);
-    	pdf2svgTransformer.createPathFromPrimitiveList();
+    	pdf2svgTransformer.debugBuilder.append(" LINEPATH: "+linePathD);
+    	pdf2svgTransformer.getPdfPage2SVGConverter().createPathAndClearPrimitiveList();
 //    	LOG.debug("LINEPATH "+linePath);
         return linePath;
     }
@@ -421,7 +431,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
      * Returns an AWT paint for the given PDColor.
      */
     protected Paint getPaint(PDColor color) throws IOException {
-    	LOG.debug("paint");
+    	LOG.trace("PAINT");
         PDColorSpace colorSpace = color.getColorSpace();
         if (!(colorSpace instanceof PDPattern)) {
             float[] rgb = colorSpace.toRGB(color.getComponents());
@@ -483,7 +493,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     public void beginText() throws IOException {
     	super.beginText();
     	LOG.trace("BEGIN TEXT");
-    	pdf2svgTransformer.debug(" BT ");
+    	pdf2svgTransformer.debugBuilder.append(" BT ");
         setClip();
         beginTextClip();
     }
@@ -494,7 +504,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
      */
     @Override
     public void endText() throws IOException {
-    	pdf2svgTransformer.debug(" ET ");
+    	pdf2svgTransformer.debugBuilder.append(" ET ");
         endTextClip();
     }
     
@@ -514,7 +524,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         if (font instanceof PDType1Font || font instanceof PDType1CFont) {
         	// skip
         } else {
-        	pdf2svgTransformer.debug(" VF ");
+        	pdf2svgTransformer.debugBuilder.append(" VF ");
         	// outline font?
 	        PDVectorFont vectorFont = ((PDVectorFont)font);
 	        GlyphCache cache = glyphCaches.get(font);
@@ -530,29 +540,36 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     
     @Override
     public void appendRectangle(Point2D pp0, Point2D pp1, Point2D pp2, Point2D pp3) {
-    	Point2D p0 = invertY(pp0);
-    	Point2D p1 = invertY(pp1);
-    	Point2D p2 = invertY(pp2);
-    	Point2D p3 = invertY(pp3);
-    	pdf2svgTransformer.debug(" R[("+Util.format(p0.getX(),NDEC)+","+Util.format(p0.getY(),NDEC)+"),("+Util.format(p2.getX(),NDEC)+","+Util.format(p2.getY(),NDEC)+")] ");
-    	pdf2svgTransformer.append(new SVGRect(p0, p2));
+//    	LOG.debug(p0+" // "+p1+" // "+p2+" // "+p3);
+//    	Point2D pp0 = invertY(p0);
+//    	Point2D pp1 = invertY(p1);
+//    	Point2D pp2 = invertY(p2);
+//    	Point2D pp3 = invertY(p3);
+    	pdf2svgTransformer.debugBuilder.append(" R[("+Util.format(pp0.getX(),NDEC)+","+Util.format(pp0.getY(),NDEC)+"),("+Util.format(pp2.getX(),NDEC)+","+Util.format(pp2.getY(),NDEC)+")] ");
+    	// don't append a rect - rely on the linePaths?
+//    	pdf2svgTransformer.append(new SVGRect(p0, p2));
+//    	pdf2svgTransformer.append(new SVGRect(p1, p3)); // because we have inverted?
 //		LOG.debug("appendRectangle "+p0);
         // to ensure that the path is created in the right direction, we have to create
         // it by combining single lines instead of creating a simple rectangle
-        linePath.moveTo((float) p0.getX(), (float) p0.getY());
-        linePath.lineTo((float) p1.getX(), (float) p1.getY());
-        linePath.lineTo((float) p2.getX(), (float) p2.getY());
-        linePath.lineTo((float) p3.getX(), (float) p3.getY());
+//        pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(new Real2(p0.getX(),p0.getY()));
+//        pdf2svgTransformer.getPdfPage2SVGConverter().moveTo(new Real2(p0.getX(),p0.getY()));
+        linePath.moveTo((float) pp0.getX(), (float) pp0.getY());
+        linePath.lineTo((float) pp1.getX(), (float) pp1.getY());
+        linePath.lineTo((float) pp2.getX(), (float) pp2.getY());
+        linePath.lineTo((float) pp3.getX(), (float) pp3.getY());
 
         // close the subpath instead of adding the last line so that a possible set line
         // cap style isn't taken into account at the "beginning" of the rectangle
         linePath.closePath();
-        pdf2svgTransformer.setCurrentPoint(new Real2(p0.getX(),p0.getY()));
+        SVGPath path = new SVGPath(linePath);
+//        pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(new Real2(p0.getX(),p0.getY()));
+        pdf2svgTransformer.getPdfPage2SVGConverter().appendChild(path);;
     }
 
     @Override
     public void strokePath() throws IOException {
-		LOG.debug("strokePath "+linePath);
+		LOG.debug("STROKEPATH "+linePath);
 		if (graphics != null) {
 	        graphics.setComposite(getGraphicsState().getStrokingJavaComposite());
 	        graphics.setPaint(getStrokingPaint());
@@ -638,9 +655,9 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     public void moveTo(float x, float yy) {
     	double y = invertY(yy);
     	LOG.trace("MOVE "+x+","+y);
-    	pdf2svgTransformer.debug(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+    	pdf2svgTransformer.debugBuilder.append(" M"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
         linePath.moveTo(x, y);
-        pdf2svgTransformer.moveTo(new Real2(x, y));
+        pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(new Real2(x, y));
     }
 
     @Override
@@ -648,11 +665,11 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     	double y = invertY(yy);
     	Real2 point0 = Real2.createReal2(getCurrentPoint());
     	LOG.trace("LINE "+x+","+y);
-    	pdf2svgTransformer.debug(" L"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
+    	pdf2svgTransformer.debugBuilder.append(" L"+Util.format(x,NDEC)+","+Util.format(y,NDEC)+" ");
         linePath.lineTo(x, y);
         Real2 point = new Real2(x, y);
-        pdf2svgTransformer.moveTo(point0);
-        pdf2svgTransformer.lineTo(point);
+        pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(point0);
+        pdf2svgTransformer.getPdfPage2SVGConverter().lineTo(point);
     }
 
     @Override
@@ -663,8 +680,8 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     	Real2 point0 = Real2.createReal2(getCurrentPoint());
     	LOG.trace("CURVE "+x1+","+yy1);
     	MovePrimitive move = new MovePrimitive(point0);
-    	pdf2svgTransformer.addPrimitive(move);
-    	pdf2svgTransformer.debug(" C"+Util.format(x1,NDEC)+","+Util.format(yy1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(yy2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(yy3,NDEC)+" ");
+    	pdf2svgTransformer.getPdfPage2SVGConverter().addPrimitive(move);
+    	pdf2svgTransformer.debugBuilder.append(" C"+Util.format(x1,NDEC)+","+Util.format(yy1,NDEC)+" "+Util.format(x2,NDEC)+","+Util.format(yy2,NDEC)+" "+Util.format(x3,NDEC)+","+Util.format(yy3,NDEC)+" ");
         linePath.curveTo(x1, yy1, x2, yy2, x3, yy3);
         Real2Array coordArray = new Real2Array();
         
@@ -673,8 +690,8 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         Real2 point = new Real2(x3, yy3);
         coordArray.add(point);
         CubicPrimitive cubic = new CubicPrimitive(coordArray);
-        pdf2svgTransformer.addPrimitive(cubic);
-        pdf2svgTransformer.moveTo(point);
+        pdf2svgTransformer.getPdfPage2SVGConverter().addPrimitive(cubic);
+        pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(point);
         
     }
 
@@ -682,34 +699,36 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     public Point2D getCurrentPoint() {
     	LOG.trace("CURRENT: "+linePath.getCurrentPoint());
     	Point2D point = linePath.getCurrentPoint();
-    	pdf2svgTransformer.debug(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
-    	pdf2svgTransformer.setCurrentPoint(new Real2(point.getX(), point.getY()));
+    	pdf2svgTransformer.debugBuilder.append(" P("+Util.format(point.getX(),NDEC)+","+Util.format(point.getY(),NDEC)+") ");
+    	pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(new Real2(point.getX(), point.getY()));
         return linePath.getCurrentPoint();
     }
 
     @Override
     public void closePath() {
-    	pdf2svgTransformer.debug(" CL ");
+    	pdf2svgTransformer.debugBuilder.append(" CL ");
         linePath.closePath();
     }
 
     @Override
     public void endPath() {
-    	pdf2svgTransformer.debug(" EP ");
+    	pdf2svgTransformer.debugBuilder.append(" EP ");
         if (clipWindingRule != -1) {
             linePath.setWindingRule(clipWindingRule);
             getGraphicsState().intersectClippingPath(linePath);
             clipWindingRule = -1;
         }
+        pdf2svgTransformer.getPdfPage2SVGConverter().addPrimitive(new ClosePrimitive());
         linePath.reset();
-//    	SVGG g = new SVGG();
-//    	g.setClassName("endPath");
-//		pdf2svgTransformer.append(g);
 
     }
     
+    /** not sure where this ends up
+     * 
+     */
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
+    	if (true) throw new RuntimeException("IMAGE");
         Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
         AffineTransform at = ctm.createAffineTransform();
 
@@ -908,12 +927,12 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     protected void applyTextAdjustment(float tx, float ty) throws IOException {
 //    	LOG.trace("****textAdjustment "+tx+";"+ty);
     	super.applyTextAdjustment(tx, ty);
-    	pdf2svgTransformer.setCurrentPoint(new Real2(tx, ty)); // maybe
+    	pdf2svgTransformer.getPdfPage2SVGConverter().setCurrentPoint(new Real2(tx, ty)); // maybe
     }
 
     @SuppressWarnings("deprecation")
 	protected void showText(byte[] string) throws IOException {
-    	pdf2svgTransformer.debug(""+new String(string)+"");
+    	pdf2svgTransformer.debugBuilder.append(""+new String(string)+"");
 //    	pdf2svgTransformer.addText(""+new String(string)+"");
     	super.showText(string);
     }
@@ -921,7 +940,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     @Override
     protected void showType3Glyph(Matrix textRenderingMatrix, PDType3Font font, int code,
             String unicode, Vector displacement) throws IOException {
-    	pdf2svgTransformer.debug(" ****showType3Glyph**** ");
+    	pdf2svgTransformer.debugBuilder.append(" ****showType3Glyph**** ");
     	super.showType3Glyph(textRenderingMatrix, font, code, unicode, displacement);
     }
 
@@ -943,7 +962,9 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
         // here is draw it directly onto the Graphics2D device at the appropriate position
         PDRectangle bbox = group.getBBox();
         AffineTransform prev = graphics.getTransform();
-
+        if (xform == null) {
+        	throw new RuntimeException("Null xform");
+        }
         Matrix m = new Matrix(xform);
         float xScale = Math.abs(m.getScalingFactorX());
         float yScale = Math.abs(m.getScalingFactorY());
@@ -1562,6 +1583,16 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
                                         (float)clipRect.getWidth(), (float)clipRect.getHeight());
 
             // apply the underlying Graphics2D device's DPI transform
+            if (xform == null) {
+            	LOG.warn("null xform");
+                image = null;
+//                bbox = null;
+                minX = 0;
+                minY = 0;
+                width = 0;
+                height = 0;
+            	return;
+            }
             Matrix m = new Matrix(xform);
             AffineTransform dpiTransform = AffineTransform.getScaleInstance(Math.abs(m.getScalingFactorX()), Math.abs(m.getScalingFactorY()));
             Rectangle2D bounds = dpiTransform.createTransformedShape(clip.getBounds2D()).getBounds2D();
@@ -1793,7 +1824,7 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
 		if (!Real.isEqual(scaleRatio, 1.0, 0.3) 
 				|| !translate.isEqualTo(new Real2(0., 0.0), 0.001)) {
 //			System.out.printf("transform(Tx=%s)%n", t2.toString());
-			pdf2svgTransformer.debug("transform "+ new RealArray(t2.getMatrixAsArray()));
+			pdf2svgTransformer.debugBuilder.append("transform "+ new RealArray(t2.getMatrixAsArray()));
 			unusual = true;
 		}
 		return unusual;
@@ -1816,14 +1847,23 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
     	return t;
 	}
 
-	protected void addFillStroke(SVGElement element) {
+	protected void addFillStroke(GraphicsElement element) {
 		String fill = getFillString();
-		if (fill != null) element.setFill(fill);
+		if (fill == null) {
+			element.setFill("none");
+		} else {
+			element.setFill(fill);
+		}
 		String stroke = getStrokeString();
-		if (stroke != null) element.setStroke(stroke);
-		LOG.debug("f "+fill+"; s "+stroke+"; "+element);
+		if (stroke == null) {
+			element.setStroke("none");
+		} else {
+			element.setStroke(stroke);
+		}
+		LOG.trace(">> "+element.toXML());
+		LOG.trace("f "+fill+"; s "+stroke+"; "+element);
 //		StyleAttribute.createStyleAttribute(element, Preserve.REMOVE);
-		LOG.debug("EE "+element.toString());
+		LOG.trace("EE "+element.toString());
 	}
 
 	/** get RGB for current stroke.
@@ -1833,7 +1873,8 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
 	 */
 	String getStrokeString() {
 		PDColor color = getGraphicsState() == null ? null : getGraphicsState().getStrokingColor();
-		return convertToRGB(color);
+		String strokeString = convertToRGB(color);
+		return strokeString == null ? "none" : strokeString;
 	}
 
 	/** get RGB for current non-stroke.
@@ -1843,20 +1884,18 @@ public class AMIGraphics2SVG extends PDFGraphicsStreamEngine {
 	 */
 	String getFillString() {
 		PDColor color = getGraphicsState() == null ? null : getGraphicsState().getNonStrokingColor();
-		return convertToRGB(color);
+		String fillString = convertToRGB(color);
+		return fillString == null ? "none" : fillString;
 	}
 
 	private String convertToRGB(PDColor color) {
 		String rgb = null;
 		try {
-			rgb = (color == null) ? null : String.format("#%06x", color.toRGB());
+			rgb = (color == null) ? "none" : String.format("#%06x", color.toRGB());
 		} catch (IOException e) {
 			// cannot convert
 		}
 		return rgb;
 	}
-
-
-
 
 }

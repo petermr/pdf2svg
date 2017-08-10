@@ -18,6 +18,7 @@ package org.xmlcml.pdf2svg;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Image;
 import java.awt.Paint;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
@@ -59,11 +60,13 @@ import org.xmlcml.font.CodePoint;
 import org.xmlcml.font.CodePointSet;
 import org.xmlcml.font.NonStandardFontFamily;
 import org.xmlcml.font.NonStandardFontManager;
+import org.xmlcml.graphics.svg.GraphicsElement;
 import org.xmlcml.graphics.svg.GraphicsElement.FontStyle;
 import org.xmlcml.graphics.svg.GraphicsElement.FontWeight;
 import org.xmlcml.graphics.svg.SVGClipPath;
 import org.xmlcml.graphics.svg.SVGDefs;
 import org.xmlcml.graphics.svg.SVGElement;
+import org.xmlcml.graphics.svg.SVGG;
 import org.xmlcml.graphics.svg.SVGImage;
 import org.xmlcml.graphics.svg.SVGLine;
 import org.xmlcml.graphics.svg.SVGPath;
@@ -74,10 +77,10 @@ import org.xmlcml.graphics.svg.SVGShape;
 import org.xmlcml.graphics.svg.SVGText;
 import org.xmlcml.graphics.svg.SVGTitle;
 import org.xmlcml.graphics.svg.SVGUtil;
+import org.xmlcml.graphics.svg.StyleAttributeFactory;
 import org.xmlcml.graphics.svg.path.PathPrimitiveList;
 import org.xmlcml.pdf2svg.util.PDF2SVGUtil;
 import org.xmlcml.pdf2svg.util.Util_1_8;
-import org.xmlcml.xml.XMLUtil;
 
 /** converts a PDPage to SVG
  * Originally used PageDrawer to capture the PDF operations.These have been
@@ -88,6 +91,25 @@ import org.xmlcml.xml.XMLUtil;
 // 1.8 public class PDFPage2SVGConverter extends PageDrawer {
 // PDFBox 2.0.6 version
 public class PDFPage2SVGConverter extends AMIGraphics2SVG {
+	
+	private static final String BACKGROUND = "background";
+	private static final String PATH_PRIMITIVES = "pathPrimitives";
+	private static final String SHAPE_STREAM = "shapeStream";
+	private static final String STYLE_CHANGE = "styleChange";
+	private static final String NEW_P = "new P";
+	private static final String TEXT_STREAM = "textStream";
+	private static final String PATH_STREAM = "pathStream";
+	private static final String PATH_G = "PathG";
+	private static final String SHAPE_G = "ShapeG";
+	private static final String TEXT_G = "TextG";
+
+	private static final String Y_CHANGE = "yChange";
+	private static final String P0 = "P0";
+	private static final String P = "P";
+	private static final String L = "L";
+	private static final String X = "X";
+	private static final String G = "G";
+	private static final String T = "T";
 	
 	private static final double DEFAULT_FONT_SIZE = 8.0;
 	private static final int _BOLD_FONT_MIN = 410;
@@ -146,6 +168,17 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	private static int MAX_DEBUG = 0;
 
 	private Set<String> weightSet = new HashSet<String>();
+	private String lastOp;
+	private String lastTextStyle = "";
+	private Double lastTextY = -9999999.0;
+	private double eps;
+	private SVGG textStreamG;
+	private SVGG pathStreamG;
+	private SVGG shapeStreamG;
+	private SVGG currentTextG;
+	private SVGG currentPathG;
+	private SVGG currentShapeG;
+	private SVGG currentTextG0;
 	
 	
 	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer, PDFRenderer renderer, PDPage page) throws IOException {
@@ -156,6 +189,26 @@ public class PDFPage2SVGConverter extends AMIGraphics2SVG {
 	private void init() {
         this.pathPrimitiveList = new PathPrimitiveList();
         this.svgBuilder = new SVGSVG();
+
+        SVGRect background = new SVGRect(mediaBox.getLowerLeftX(), mediaBox.getLowerLeftY(), mediaBox.getWidth(), mediaBox.getHeight());
+        background.setClassName(BACKGROUND);
+        StyleAttributeFactory.createAndAddOldStyleAttribute(background);
+        background.setCSSStyleAndRemoveOldStyle("fill:white;");
+        svgBuilder.appendChild(background);
+
+        textStreamG = new SVGG();
+        textStreamG.setClassName(TEXT_STREAM);
+        svgBuilder.appendChild(textStreamG);
+        
+        pathStreamG = new SVGG();
+        pathStreamG.setClassName(PATH_STREAM);
+        svgBuilder.appendChild(pathStreamG);
+        
+        shapeStreamG = new SVGG();
+        shapeStreamG.setClassName(SHAPE_STREAM);
+        svgBuilder.appendChild(shapeStreamG);
+        
+        eps = 0.01;
 	}
 
 	public PDFPage2SVGConverter(PDF2SVGTransformer pdf2svgTransformer,  AMIPageDrawerParameters pageDrawerParameters) throws IOException {
@@ -769,7 +822,7 @@ xmlns="http://www.w3.org/2000/svg">
 		}
 	}
 
-	private void setFontName(SVGElement svgElement, String fontName) {
+	private void setFontName(GraphicsElement svgElement, String fontName) {
 		if (fontName != null) {
 			PDF2SVGUtil.setSVGXAttribute(svgElement, NonStandardFontManager.FONT_NAME, fontName);
 		} else {
@@ -777,7 +830,7 @@ xmlns="http://www.w3.org/2000/svg">
 		}
 	}
 	
-	private void setCharacterWidth(SVGElement svgElement, double width) {
+	private void setCharacterWidth(GraphicsElement svgElement, double width) {
 		PDF2SVGUtil.setSVGXAttribute(svgElement, PDF2SVGUtil.CHARACTER_WIDTH, String.valueOf(width));
 	}
 	
@@ -1099,7 +1152,7 @@ xmlns="http://www.w3.org/2000/svg">
 		generalPath.reset();
 	}
 
-	private void setClipPath(SVGElement svgElement, String clipString, Integer clipPathNumber) {
+	private void setClipPath(GraphicsElement svgElement, String clipString, Integer clipPathNumber) {
 		String urlString = "url(#clipPath"+clipPathNumber+")";
 		svgElement.setClipPath(urlString);
 	}
@@ -1145,8 +1198,11 @@ xmlns="http://www.w3.org/2000/svg">
 	 * 
 	 */
 	// 1.8
-//	@Override
-//	public void drawImage(Image awtImage, AffineTransform at) {
+	// I don't think this is ever called
+	public void drawImage(Image awtImage, AffineTransform at) {
+		throw new RuntimeException("drawImage");
+	}
+
 ////		System.out
 ////				.printf("\tdrawImage: awtImage='%s', affineTransform='%s', composite='%s', clip='%s'%n",
 ////						awtImage.toString(), at.toString(), getGraphicsState()
@@ -1249,50 +1305,144 @@ xmlns="http://www.w3.org/2000/svg">
 	}
 
 	public void addPrimitive(SVGPathPrimitive primitive) {
+		if (!P.equals(lastOp)) LOG.debug(NEW_P);
 		this.pathPrimitiveList.add(primitive);
+		lastOp = P;
 	}
 
 	public void createPathAndClearPrimitiveList() {
+		if (!P0.equals(lastOp)) {
+			LOG.debug("new P0");
+		}
 		SVGPath path = new SVGPath(pathPrimitiveList);
 		addFillStroke(path);
-		svgBuilder.appendChild(path);
+		currentPathG.appendChild(path);
+		addNewShapeG(PATH_PRIMITIVES).setCSSStyle(path.getStyle());
 		pathPrimitiveList =  new PathPrimitiveList();
+		lastOp = P0;
 	}
 
 	public void lineTo(Real2 point) {
+		if (!L.equals(lastOp)) {
+			addNewShapeG(SHAPE_G);
+			LOG.debug("new L");
+		}
 		String stroke = getStrokeString();
 		SVGLine line = new SVGLine(currentPoint, point);
 		line.setStroke(stroke);
-		svgBuilder.appendChild(line);
+		currentShapeG.appendChild(line);
+		addNewShapeG(Y_CHANGE).setCSSStyle(line.getStyle());
 		this.currentPoint = point;
+		lastOp = L;
 	}
 
-	public void addText(String txt) {
-		txt = XMLUtil.removeNonXML(txt);
-		SVGText svgText = new SVGText(currentPoint, txt);
-		addFillStroke(svgText);
-		svgText.setFontSize(10.0);
-		svgBuilder.appendChild(svgText);
-	}
-
-	public void appendChild(SVGElement element) {
-		svgBuilder.appendChild(element);
+	public void appendChild(GraphicsElement graphicsElement) {
+		if (!G.equals(lastOp)) {
+			addNewPathG(PATH_G);
+			LOG.debug("new G");
+		}
+		LOG.trace("gx: "+graphicsElement.toXML());
+		currentPathG.appendChild(graphicsElement);
+		if (graphicsElement.getStyle() == null || "".equals(graphicsElement.getStyle().trim())) {
+			graphicsElement.setCSSStyle("fill:none;stroke:black;stroke-width:1px;");
+			LOG.debug(">g>"+graphicsElement.getStyle());
+		}
+		lastOp = G;
 	}
 
 	public void appendChild(SVGText svgText) {
-		LOG.debug("t: "+svgText);
-		addFillStroke(svgText);
-		svgBuilder.appendChild(svgText);
+		if (!T.equals(lastOp)) {
+			addNewTextG0(TEXT_G);
+			LOG.debug("new T");
+		} 
+		addFillStroke(svgText); // this may need more attributes?
+		String style = svgText.getStyle();
+		svgText.setStrokeWidth(0.1); // default is too large
+		StyleAttributeFactory attributeFactory = new StyleAttributeFactory(style);
+		if (attributeFactory.expandStyle(style)) {
+			String style1 = attributeFactory.getAttributeValue();
+//			LOG.debug("style: "+style+" ==>> "+style1);
+			svgText.setCSSStyle(style1);
+		}
+		
+		LOG.trace(">>"+svgText.toXML());
+		svgText.format(3);
+		Double y = svgText.getY();
+		if (!Real.isEqual(y, lastTextY, eps)) {
+//			LOG.debug("Y: "+lastTextY+" => "+y);
+			addNewTextG(Y_CHANGE).setCSSStyle(style);
+		} else {
+			/// textArray
+		}
+		if (!lastTextStyle.equals(style)) {
+			LOG.debug("style: " + lastTextStyle + " => " + style);
+			addNewTextG(STYLE_CHANGE).setCSSStyle(style);
+			LOG.debug(">newTextG> "+currentTextG.toXML());
+		}
+		svgText.removeAttribute(GraphicsElement.STYLE);
+		currentTextG.appendChild(svgText);
+		currentTextG.ensureStyle(style);
+		LOG.trace(">>xx>>"+style);
+		LOG.trace(currentTextG.getStyle());
+		lastTextStyle = style;
+		lastTextY = y;
+		lastOp = T;
 	}
 
-//	@Override
-//	public void setStroke(BasicStroke basicStroke) {
-//		this.basicStroke = basicStroke;
+	// =======================================
+	
+	private SVGG addNewTextG0(String clazz) {
+		currentTextG0 = new SVGG();
+		currentTextG0.setClassName(clazz);
+		textStreamG.appendChild(currentTextG0);
+		return currentTextG;
+	}
+
+	private SVGG addNewTextG(String clazz) {
+		ensureCurrentTextG0();
+		currentTextG = new SVGG();
+		currentTextG.setClassName(clazz);
+		currentTextG0.appendChild(currentTextG);
+		return currentTextG;
+	}
+
+	private void ensureCurrentTextG0() {
+		if (currentTextG0 == null) {
+			addNewTextG0("origG");
+		}
+	}
+
+	private SVGG addNewPathG(String clazz) {
+		currentPathG = new SVGG();
+		currentPathG.setClassName(clazz);
+		pathStreamG.appendChild(currentPathG);
+		return currentPathG;
+	}
+
+	private SVGG addNewShapeG(String clazz) {
+		currentShapeG = new SVGG();
+		currentShapeG.setClassName(clazz);
+		shapeStreamG.appendChild(currentShapeG);
+		return currentShapeG;
+	}
+
+//	/** is this called?
+//	 * 
+//	 * @param txt
+//	 */
+//	private void addText(String txt) {
+//		if (!X.equals(lastOp)) {
+//			LOG.debug("new X");
+//		}
+//		txt = XMLUtil.removeNonXML(txt);
+//		SVGText svgText = new SVGText(currentPoint, txt);
+//		addFillStroke(svgText);
+//		svgText.setClassName("text??");
+////		svgText.setFontSize(10.0);
+//		svgBuilder.appendChild(svgText);
+//		lastOp = X;
+//		throw new RuntimeException("Text"); // to trap calls
 //	}
-//
-//	@Override
-//	public BasicStroke getStroke() {
-//		return basicStroke;
-//	}
+
 
 }
