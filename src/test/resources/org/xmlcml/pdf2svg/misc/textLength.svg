@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800">
+ <rect x="0.0" y="0.0" width="595.2760009765625" height="799.3699951171875" class="background" style="fill:white;"/>
+ <g >
+ <text x="10,25,40,70" y="130,150,110" font-size="40.0" textLength="-10,20,200,30">abcd</text>
+ </g>
+</svg>
