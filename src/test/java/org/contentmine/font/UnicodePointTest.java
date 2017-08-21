@@ -1,5 +1,6 @@
-package org.xmlcml.font;
+package org.contentmine.font;
 
+import org.contentmine.font.UnicodePoint;
 import org.junit.Assert;
 import org.junit.Test;
 

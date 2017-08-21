@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.xmlcml.font;
+package org.contentmine.font;
 
 import nu.xom.Builder;
 import nu.xom.Element;
 
+import org.contentmine.font.CodePoint;
+import org.contentmine.font.CodePointSet;
 import org.junit.Assert;
 import org.junit.Test;
 import org.xmlcml.euclid.Util;
-import org.xmlcml.font.CodePoint;
-import org.xmlcml.font.CodePointSet;
 
 public class CodePointTest {
 

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.xmlcml.font;
+package org.contentmine.font;
 
 import java.util.List;
 
@@ -21,14 +21,17 @@ import nu.xom.Builder;
 import nu.xom.Element;
 
 import org.apache.log4j.Logger;
+import org.contentmine.font.CodePoint;
+import org.contentmine.font.CodePointSet;
+import org.contentmine.pdf2svg.util.PConstants;
 import org.junit.Assert;
 import org.junit.Test;
 import org.xmlcml.euclid.Util;
-import org.xmlcml.font.CodePoint;
-import org.xmlcml.font.CodePointSet;
 
 public class CodePointSetTest {
 
+	private static final String CODEPOINTS = "codepoints";
+	private static final String CODE_POINT_SET_XML_RESOURCE = PConstants.CODEPOINT_ROOT+"/"+CODEPOINTS;
 	private final static Logger LOG = Logger.getLogger(CodePointSet.class);
 	
 	
@@ -85,7 +88,7 @@ public class CodePointSetTest {
 	
 	@Test
 	public void testInclude() throws Exception {
-		CodePointSet codePointSet = CodePointSet.readCodePointSet("org/xmlcml/pdf2svg/codepoints/test/mtsyn.xml");
+		CodePointSet codePointSet = CodePointSet.readCodePointSet(CODE_POINT_SET_XML_RESOURCE+"/test/mtsyn.xml");
 		Assert.assertNotNull("codePointSet", codePointSet);
 		List<CodePoint> codePoints = codePointSet.getCodePoints();
 		Assert.assertEquals("codePoints", 97, codePoints.size());
@@ -93,7 +96,7 @@ public class CodePointSetTest {
 
 	@Test
 	public void testIncludeSearch1() throws Exception {
-		CodePointSet codePointSet = CodePointSet.readCodePointSet("org/xmlcml/pdf2svg/codepoints/test/mtsyn.xml");
+		CodePointSet codePointSet = CodePointSet.readCodePointSet(CODE_POINT_SET_XML_RESOURCE+"/test/mtsyn.xml");
 		CodePoint codePoint = codePointSet.getByDecimal(65);
 		Assert.assertNotNull("A", codePoint);
 		Assert.assertNotNull("A", codePoint.getUnicodePoint());
@@ -102,7 +105,7 @@ public class CodePointSetTest {
 
 	@Test
 	public void testIncludeSearchNonAnsi() throws Exception {
-		CodePointSet codePointSet = CodePointSet.readCodePointSet("org/xmlcml/pdf2svg/codepoints/test/mtsyn.xml");
+		CodePointSet codePointSet = CodePointSet.readCodePointSet(CODE_POINT_SET_XML_RESOURCE+"/test/mtsyn.xml");
 		CodePoint codePoint = codePointSet.getByDecimal(5); 
 		Assert.assertNotNull("SOLIDUS", codePoint);
 		Assert.assertNotNull("SOLIDUS", codePoint.getUnicodePoint());
@@ -112,7 +115,7 @@ public class CodePointSetTest {
 
 	@Test
 	public void testMainResources() throws Exception {
-		CodePointSet codePointSet = CodePointSet.readCodePointSet("org/xmlcml/pdf2svg/codepoints/defacto/mtsyn.xml");
+		CodePointSet codePointSet = CodePointSet.readCodePointSet(CODE_POINT_SET_XML_RESOURCE+"/defacto/mtsyn.xml");
 		int size = codePointSet.size();
 		Assert.assertTrue(String.valueOf(size), size >= 8 && size <= 5000); // this will change
 		
