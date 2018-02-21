@@ -39,7 +39,10 @@ import org.apache.pdfbox.util.PDFStreamEngine;
 import org.xmlcml.font.CodePointSet;
 import org.xmlcml.font.FontFamilySet;
 import org.xmlcml.font.NonStandardFontManager;
+import org.xmlcml.graphics.svg.SVGG;
 import org.xmlcml.graphics.svg.SVGSVG;
+import org.xmlcml.graphics.svg.SVGText;
+import org.xmlcml.graphics.svg.normalize.TextDecorator;
 import org.xmlcml.pdf2svg.log.XMLLogger;
 import org.xmlcml.pdf2svg.util.MenuSystem;
 
@@ -61,6 +64,7 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 	@SuppressWarnings("unused")
 	private static final long serialVersionUID = 1L;
 
+	public static final String COMPACT = "-compact";
 	public static final String DEBUG_CHAR_CODE = "-debugCharCode";
 	public static final String DEBUG_CHAR_NAME = "-debugCharName";
 	public static final String DEBUG_FONT_NAME = "-debugFontName";
@@ -135,6 +139,8 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 
 	public int maxInlineImageSize = 100; // size in pixels - arbitrary 
 
+	private boolean makeCompactText = false;
+
 	public int getMaxPage() {
 		return maxPage;
 	}
@@ -164,11 +170,14 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 						+ "  %s            enter debug loop (with charCode)%n"
 						+ "  %s            enter debug loop (with charName)%n"
 						+ "  %s            enter debug loop (with fontName)%n"
+						+ "  %s            output compact SVG (multichar texts)%n"
 						+ "  <input-file(s)>       The PDF document(s) to be loaded%n%n",
                                                 PASSWORD, NONSEQ, PAGES, PUB, OUTDIR, MKDIR, NO_SVG, STORE_SVG,
                                                 INFO_FILES, LOGGER, LOGFILE, LOGMORE, LOGGLYPHS, EXITONERR,
                                                 PASSWORD, NONSEQ, PAGES, PUB, OUTDIR, MKDIR, NO_SVG, STORE_SVG,
-                                                INFO_FILES, LOGGER, LOGFILE, LOGMORE, LOGGLYPHS, EXITONERR, DEBUG_CHAR_CODE, DEBUG_CHAR_NAME, DEBUG_FONT_NAME);
+                                                INFO_FILES, LOGGER, LOGFILE, LOGMORE, LOGGLYPHS, EXITONERR, 
+                                                DEBUG_CHAR_CODE, DEBUG_CHAR_NAME, DEBUG_FONT_NAME,
+                                                COMPACT);
 	}
 
 	public void openPDFURL(String urlString) throws Exception {
@@ -237,6 +246,9 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 			System.out.print(pageNumber + " = ");
 
 			currentSVGPage = page2svgConverter.convertPageToSVG(page, this);
+			if (makeCompactText) {
+				compactCurrentSVGPage();
+			}
 
 			if (storeSVG) {
 				addPageToPageList();
@@ -255,6 +267,25 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 		System.out.println();
 	}
 
+	private void compactCurrentSVGPage() {
+		List<SVGText> oldTextList = SVGText.extractSelfAndDescendantTexts(currentSVGPage);
+		if (oldTextList.size() > 0) {
+			// insert compactedText at first text
+			int firstTextIdx = currentSVGPage.indexOf(oldTextList.get(0));
+			for (SVGText oldText : oldTextList) {
+				oldText.detach();
+			}
+			TextDecorator textDecorator = new TextDecorator();
+			SVGG g = textDecorator.compactTexts(oldTextList);
+			List<SVGText> newTextList = SVGText.extractSelfAndDescendantTexts(g);
+			for (int i = newTextList.size() - 1; i >= 0; i--) {
+				SVGText newText = newTextList.get(i);
+				newText.detach();
+				currentSVGPage.insertChild(newText, firstTextIdx);
+			}
+		}
+	}
+
 	private void createBasename(File inputFile) {
 		inputBasename = null;
 		if (inputFile != null) {
@@ -269,7 +300,8 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 
 	private void addPageToPageList() {
 		ensureSVGPageList();
-		SVGSVG svgPage = page2svgConverter.getSVG();
+		SVGSVG svgPage = page2svgConverter.getConvertedPageSVG();
+		
 		svgPageList.add(svgPage);
 	}
 
@@ -467,6 +499,11 @@ public class PDF2SVGConverter extends PDFStreamEngine {
 
 			if (args[iarg].equals(EXITONERR)) {
 				exitOnError = true;
+				continue;
+			}
+
+			if (args[iarg].equals(COMPACT)) {
+				makeCompactText  = true;
 				continue;
 			}
 

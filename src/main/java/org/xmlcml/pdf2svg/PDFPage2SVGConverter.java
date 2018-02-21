@@ -107,7 +107,7 @@ public class PDFPage2SVGConverter extends PageDrawer {
 //	private static double eps = 0.001;
 
 	private BasicStroke basicStroke;
-	private SVGSVG svg;
+	private SVGSVG convertedPageSVG;
 	private PDGraphicsState graphicsState;
 	private Matrix testMatrix;
 	private PDFont pdFont;
@@ -162,7 +162,7 @@ public class PDFPage2SVGConverter extends PageDrawer {
 		amiFontManager.setNullFontDescriptorReport(true);
 		createSVGSVG();
 		drawPage(page);
-		return svg;
+		return convertedPageSVG;
 	}
 	
 	void drawPage(PDPage p) {
@@ -208,7 +208,7 @@ public class PDFPage2SVGConverter extends PageDrawer {
 				box.setStroke(color[icol]);
 				box.setOpacity(1.0);
 				box.setStrokeWidth(2.0);
-				svg.appendChild(box);
+				convertedPageSVG.appendChild(box);
 				icol = (icol+1) % 6;
 			}
 		}
@@ -295,12 +295,12 @@ xmlns="http://www.w3.org/2000/svg">
    </clipPath>
    </defs>
  */
-		List<SVGElement> defList = SVGUtil.getQuerySVGElements(svg, "/svg:g/svg:defs[@id='defs1']");
+		List<SVGElement> defList = SVGUtil.getQuerySVGElements(convertedPageSVG, "/svg:g/svg:defs[@id='defs1']");
 		defs1 = (defList.size() > 0) ? defList.get(0) : null;
 		if (defs1 == null) {
 			defs1 = new SVGDefs();
 			defs1.setId("defs1");
-			svg.insertChild(defs1, 0);
+			convertedPageSVG.insertChild(defs1, 0);
 		}
 	}
 
@@ -365,7 +365,7 @@ xmlns="http://www.w3.org/2000/svg">
 
 		addContentAndAttributesToSVGText(svgText);
 		changeFontStyles(svgText);
-		svg.appendChild(svgText);
+		convertedPageSVG.appendChild(svgText);
 	}
 
 	private void changeFontStyles(SVGText svgText) {
@@ -560,7 +560,8 @@ xmlns="http://www.w3.org/2000/svg">
 	private void addContentAndAttributesToSVGText(SVGText svgText) {
 		try {
 			svgText.setText(textContent);
-		} catch (RuntimeException e) {
+		} catch (nu.xom.IllegalCharacterDataException e) {
+			System.err.println("?"+textContent);
 			// drops here if cannot encode as XML character
 			annotateText = true;
 		}
@@ -1028,7 +1029,7 @@ xmlns="http://www.w3.org/2000/svg">
 		}
 		svgPath.setStrokeWidth(lineWidth);
 		svgPath.format(nPlaces);
-		svg.appendChild(svgPath);
+		convertedPageSVG.appendChild(svgPath);
 		generalPath.reset();
 	}
 
@@ -1103,7 +1104,11 @@ xmlns="http://www.w3.org/2000/svg">
 		if (imageDirectory != null) {
 			filename = createImageFilename();
 			File imageFile =  imageDirectory == null ? null : new File(imageDirectory, filename);
-			LOG.debug("imageFile "+imageFile);
+			try {
+				LOG.trace("imageFile "+imageFile.getCanonicalPath());
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 			ImageIOUtil.writeImageQuietly(bImage, imageFile);
 		}
 		return filename;
@@ -1118,7 +1123,7 @@ xmlns="http://www.w3.org/2000/svg">
 		svgImage.setTransform(t2);
 		try {
 			svgImage.readImageDataIntoSrcValue(bImage, SVGImage.IMAGE_PNG);
-			svg.appendChild(svgImage);
+			convertedPageSVG.appendChild(svgImage);
 		} catch (Exception e) {
 			LOG.error("Cannot convert image, skipping "+e);
 		}
@@ -1130,7 +1135,7 @@ xmlns="http://www.w3.org/2000/svg">
 		try {
 			svgImage.setHref(filename);
 			svgImage.setXYWidthHeight(bImage);
-			svg.appendChild(svgImage);
+			convertedPageSVG.appendChild(svgImage);
 		} catch (Exception e) {
 			LOG.error("Cannot convert image, skipping "+e);
 		}
@@ -1147,18 +1152,18 @@ xmlns="http://www.w3.org/2000/svg">
 	/** creates new <svg> and removes/sets some defaults
 	 * this is partly beacuse SVGFoo may have defaults (bad idea?)
 	 */
-	public void createSVGSVG() {
-		this.svg = new SVGSVG();
-		svg.setWidth(pdf2svgConverter.pageWidth);
-		svg.setHeight(pdf2svgConverter.pageHeight);
-		svg.setStroke("none");
-		svg.setStrokeWidth(0.0);
-		svg.addNamespaceDeclaration(PDF2SVGUtil.SVGX_PREFIX, PDF2SVGUtil.SVGX_NS);
+	private void createSVGSVG() {
+		this.convertedPageSVG = new SVGSVG();
+		convertedPageSVG.setWidth(pdf2svgConverter.pageWidth);
+		convertedPageSVG.setHeight(pdf2svgConverter.pageHeight);
+		convertedPageSVG.setStroke("none");
+		convertedPageSVG.setStrokeWidth(0.0);
+		convertedPageSVG.addNamespaceDeclaration(PDF2SVGUtil.SVGX_PREFIX, PDF2SVGUtil.SVGX_NS);
 		clipStringSet = new HashSet<String>();
 	}
 
-	public SVGSVG getSVG() {
-		return svg;
+	public SVGSVG getConvertedPageSVG() {
+		return convertedPageSVG;
 	}
 
 	@Override

@@ -10,15 +10,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import nu.xom.Attribute;
-import nu.xom.Document;
-import nu.xom.Element;
-import nu.xom.Serializer;
-
 import org.apache.log4j.Logger;
 import org.apache.pdfbox.encoding.Encoding;
 import org.xmlcml.graphics.svg.SVGPath;
 import org.xmlcml.pdf2svg.AMIFont;
+
+import nu.xom.Attribute;
+import nu.xom.Document;
+import nu.xom.Element;
+import nu.xom.ParentNode;
+import nu.xom.Serializer;
 
 public class XMLLogger {
 
@@ -212,7 +213,8 @@ public class XMLLogger {
 	}
 
 	public void writeXMLFile(OutputStream outputStream) {
-		Document doc = new Document(root);
+		ParentNode parent = root.getParent();
+		Document doc = (parent != null) ? (Document) parent : new Document(root);
 		try {
 			Serializer serializer = new Serializer(outputStream, UTF_8);
 			serializer.setIndent(4);
